@@ -1,0 +1,3 @@
+[submodule "enable_arm_pmu"]
+	path = enable_arm_pmu
+	url = https://github.com/rdolbeau/enable_arm_pmu.git
