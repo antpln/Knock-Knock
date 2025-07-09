@@ -1,93 +1,328 @@
-# knock-knock-reverse-engineering
+# Knock-Knock: Blind, Platform-Agnostic DRAM Address-Mapping Reverse Engineering
 
+This repository contains the implementation of **Knock-Knock**, a novel methodology for reverse engineering DRAM memory controller address mappings using timing-based side-channel attacks. The tool provides an automated approach to recover bank and row addressing functions without requiring platform-specific knowledge.
 
+# /!\ Disclaimer
+This is a Proof-of-Concept of Knock-Knock. While it yields expected results, the fully automated pipeline is not yet implemented at the time of submission. However, the missing automated features, mainly automatic threshold detection and the second timing analysis from the found masks, will be implemented for the artifact evaluation and publication.
 
-## Getting started
+## Building and Running
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+### Prerequisites
+- Linux system with root privileges (for `/proc/self/pagemap` access)
+- GCC with C++11 support
+- Make build system
+- Python 3
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### Performance Counter Setup (ARMv8 only)
+**Note**: The performance counter kernel module is only required for ARMv8 devices. On x86_64 systems, the program will work without additional setup.
 
-## Add your files
+**For ARMv8 devices only**: Install the kernel module provided in the `enable_arm_pmu/` directory:
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```bash
+cd enable_arm_pmu
+make
+sudo ./load-module
 ```
-cd existing_repo
-git remote add origin https://gitlab.inria.fr/aplin/knock-knock-reverse-engineering.git
-git branch -M main
-git push -uf origin main
+
+### Compilation
+```bash
+# Build the project
+make clean && make
+
+# The binary will be created as obj/tester
 ```
 
-## Integrate with your tools
+### Python Analysis Prerequisites
 
-- [ ] [Set up project integrations](https://gitlab.inria.fr/aplin/knock-knock-reverse-engineering/-/settings/integrations)
+The Python analysis component requires specific packages for mathematical operations and data processing:
 
-## Collaborate with your team
+#### Option 1: Using Portable Virtual Environment (Recommended)
+A portable Python virtual environment is provided in the repository for easy setup:
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```bash
+# Set up the Python virtual environment (one-time setup)
+./setup_python_env.sh
 
-## Test and Deploy
+# Activate the virtual environment
+source venv/bin/activate
 
-Use the built-in continuous integration in GitLab.
+# Run analysis (virtual environment active)
+python full_analysis.py access_module_1024.csv --thresh 150
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+# Deactivate when done
+deactivate
+```
 
-***
+#### Option 2: Manual Installation
+If you prefer to install dependencies manually:
 
-# Editing this README
+```bash
+# Install Python dependencies
+pip3 install --user numpy pandas matplotlib galois scipy
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# Verify installation
+python3 -c "import numpy, pandas, matplotlib, galois, scipy; print('All dependencies installed successfully')"
+```
 
-## Suggestions for a good README
+#### Required Python Packages
+- **Python 3.7+**: Base interpreter
+- **NumPy**: Numerical computing and matrix operations
+- **Pandas**: Data manipulation and CSV processing  
+- **Matplotlib**: Plotting and visualization
+- **galois**: Galois field (GF(2)) operations for linear algebra
+- **SciPy**: Scientific computing and statistical functions
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+#### Dependency Check
+To verify your Python environment is ready:
 
-## Name
-Choose a self-explaining name for your project.
+```bash
+# Quick dependency check
+python3 check_python_deps.py
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+# Should output all green checkmarks for required packages
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### Usage
+```bash
+# Basic usage (requires root for pagemap access)
+sudo ./obj/tester
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+# Specify memory size (25GB default)
+sudo ./obj/tester -m 8192  # Use 8GB
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+# Use percentage of total memory
+sudo ./obj/tester -p 50    # Use 50% of system memory
+
+# Run bitflip analysis instead of timing measurement
+sudo ./obj/tester --bitflip
+
+# Customize number of measurements and rounds
+sudo ./obj/tester -n 50000 -r 100
+
+# Specify output file
+sudo ./obj/tester -o custom_output.csv
+```
+
+### Command-Line Options
+- `-h`: Show help message
+- `-m <size_mb>`: Memory size in MB (default: 25600)
+- `-p <percentage>`: Memory size as percentage of total system memory
+- `-r <rounds>`: Number of timing measurement rounds (default: 50)
+- `-n <measurements>`: Number of measurements to perform (default: 100000)
+- `-o <file>`: Output file for results (default: output.csv)
+- `--timing`: Run timing measurement mode (default)
+- `--bitflip`: Run bitflip probing analysis
+- `-v`: Verbose output
+
+## Output Files
+
+The tool generates CSV files containing timing measurements and address mappings:
+
+### Timing Measurement Output (`access_module_<size>.csv`)
+```
+a1,a2,elapsed_cycles,v_a1,v_a2
+1a2b3c4d,5e6f7890,234,7f8e9d0c,1b2a3948
+...
+```
+- `a1`, `a2`: Physical addresses (hexadecimal)
+- `elapsed_cycles`: Measured access time in CPU cycles
+- `v_a1`, `v_a2`: Virtual addresses (hexadecimal)
+
+### Bitflip Analysis Output (`bitflip_probe_<size>.csv`)
+```
+anchor_va,a1,delta,probe_va,a2,elapsed_cycles
+deadbeef,12345678,00000400,cafebabe,12341278,156
+...
+```
+- `anchor_va`, `probe_va`: Virtual addresses
+- `a1`, `a2`: Physical addresses
+- `delta`: XOR difference applied
+- `elapsed_cycles`: Measured timing
+
+## Architecture Support
+
+### ARM64 (AArch64)
+- Uses `DC CIVAC` for cache line eviction
+- Employs `PMCCNTR_EL0` performance counter for high-precision timing
+- Includes anti-speculation techniques with memory barriers
+
+### x86/x86_64
+- Uses `clflush` instruction for cache eviction
+- Employs `rdtsc` instruction for timing measurements
+- Includes appropriate memory fences and barriers
+
+## Features
+
+### Data Generation (C++)
+- **Timing Measurements**: Perform precise memory access timing analysis using hardware performance counters
+- **Bitflip Probing**: Optional memory mapping analysis through controlled bit manipulation
+- **Flexible Memory Allocation**: Support for both fixed memory sizes and percentage-based allocation
+make
+```
+
+The executable will be created as `obj/tester`.
 
 ## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### How the Program Works
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+The program performs memory analysis through two main operations:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+1. **Timing Measurements** (Default): Analyzes memory access patterns by measuring timing differences between memory accesses to different physical addresses.
+2. **Bitflip Probing** (Optional): Performs controlled bit manipulation to analyze memory mapping and identify relationships between virtual and physical addresses.
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### Running the Program
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+The program must be run with root privileges to access system memory information and performance counters.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+#### Basic Workflow:
+1. **Build the program** (one-time setup)
+2. **Install ARM PMU module** (ARMv8 only, one-time setup)
+3. **Run measurements** with desired parameters
+4. **Analyze output** CSV files
 
-## License
-For open source projects, say how it is licensed.
+### Command Line Usage
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+### Basic Usage
+```bash
+sudo ./obj/tester [OPTIONS]
+```
+
+### Command Line Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-h` | Show help message | - |
+| `-o <file>` | Output file for memory profiling | `output.csv` |
+| `-m <size_mb>` | Memory size in MB | `25600` (25GB) |
+| `-p <percent>` | Memory size as percentage of total (overrides `-m`) | - |
+| `-r <rounds>` | Number of rounds | `50` |
+| `-n <measurements>` | Number of measurements | `100000` |
+| `--timing` | Run timing measurement instead of rev_mc | - |
+| `--bitflip` | Run mapping bitflip probe | - |
+| `-v` | Verbose output | - |
+
+### Examples
+
+#### Step-by-Step: First Run
+1. **Build the program:**
+   ```bash
+   make clean && make
+   ```
+
+2. **For ARMv8 systems only - Install PMU module:**
+   ```bash
+   make
+   sudo ./load-module
+   cd ..
+   ```
+
+3. **Run basic timing measurement:**
+   ```bash
+   sudo ./obj/tester
+   ```
+   This uses default settings: 25GB memory, 50 rounds, 100,000 measurements
+
+4. **Check output:**
+   ```bash
+   ls -la access_module_*.csv
+   ```
+
+### Memory Size Configuration
+
+**Use percentage of total memory (recommended):**
+```bash
+# Use 10% of total system memory
+sudo ./obj/tester -p 10
+
+# Use 1% for quick testing
+sudo ./obj/tester -p 1
+```
+
+**Use fixed memory size:**
+```bash
+# Use 1GB of memory
+sudo ./obj/tester -m 1024
+
+# Use 512MB of memory
+sudo ./obj/tester -m 512
+```
+
+### Performance Tuning
+
+**Quick test run:**
+```bash
+sudo ./obj/tester -p 1 -r 5 -n 1000
+```
+
+**High-precision measurement:**
+```bash
+sudo ./obj/tester -p 20 -r 100 -n 500000
+```
+
+### Advanced Usage
+
+**Run bitflip analysis:**
+```bash
+sudo ./obj/tester -p 5 --bitflip
+```
+
+**Custom output file:**
+```bash
+sudo ./obj/tester -p 10 -o my_experiment.csv
+```
+
+**Verbose output for debugging:**
+```bash
+sudo ./obj/tester -p 1 -n 100 -v
+```
+
+## Analysis
+
+### Prerequisites Check
+Before running analysis, verify your Python environment:
+
+```bash
+# Check all dependencies are installed
+python3 check_python_deps.py
+
+# If using virtual environment
+source venv/bin/activate
+python check_python_deps.py
+```
+
+### Running the Analysis Tool
+
+After collecting timing data with the data generation tool, use the Python analysis script to extract memory patterns:
+
+```bash
+# If using virtual environment
+source venv/bin/activate
+
+# Run analysis
+python3 full_analysis.py <csv_file> --thresh <threshold> [OPTIONS]
+```
+
+### Analysis Command Line Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `csv_file` | Path to CSV file generated by data collection tool | Required |
+| `--thresh <cycles>` | Threshold latency separating conflicts from non-conflicts | Required |
+| `--subsample <size>` | Subsample size for nullspace analysis | `1000` |
+| `--repeat <count>` | Number of repetitions for subsampling | `50` |
+| `--limit <count>` | Limit number of pairs to process (for testing) | None |
+| `--verbose`, `-v` | Enable verbose output | False |
+
+### Complete Workflow Example
+
+```bash
+# 1. Generate timing data
+sudo ./obj/tester -p 5 -n 50000 -r 50
+
+# 2. Analyze the results (adjust threshold based on your data)
+python3 full_analysis.py access_module_<size>.csv --thresh 150 --verbose
+
+# 3. For high-precision analysis
+python3 full_analysis.py access_module_<size>.csv --thresh 150 --subsample 2000 --repeat 100
+```

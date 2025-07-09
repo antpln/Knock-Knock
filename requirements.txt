@@ -1,0 +1,19 @@
+# Knock-Knock Python Analysis Requirements
+# Core dependencies for DRAM reverse engineering analysis
+
+# Scientific computing core
+numpy>=1.19.0
+pandas>=1.3.0
+matplotlib>=3.3.0
+scipy>=1.7.0
+
+# Galois field operations (essential for null-space analysis)
+galois>=0.3.0
+
+# Optional but recommended
+seaborn>=0.11.0      # Enhanced plotting and visualization
+tqdm>=4.60.0         # Progress bars for long-running operations
+
+# Development and testing (optional)
+jupyter>=1.0.0       # For interactive analysis
+ipython>=7.0.0       # Enhanced Python shell
