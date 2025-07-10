@@ -27,7 +27,7 @@ OBJECTS := $(patsubst $(SDIR)/%.cpp, $(ODIR)/%.o, $(SOURCES))
 # ASM_OBJECTS := $(patsubst $(SDIR)/%.S, $(ODIR)/%.o, $(ASM_SOURCES))
 
 $(ODIR)/%.o: $(SDIR)/%.cpp
-    mkdir -p data
+	mkdir -p data
 	mkdir -p $(ODIR)
 	$(CXX) -o $@ -c $< $(CXXFLAGS) $(LDFLAGS) $(LDEPS)
 
