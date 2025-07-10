@@ -32,6 +32,7 @@
 #define O_FILE_std      "output.csv"     // Default output file for results
 #define MEM_SIZE_MB_std 25600            // Default memory size: 25GB in MB
 #define MEASUREMENTS_std 100000          // Default number of measurements to perform
+#define CORE_ID_std     3                // Default CPU core to pin process to
 
 
 //-----------------------------------------------
@@ -47,7 +48,7 @@
  * including default values for configurable parameters.
  */
 void print_usage() {
-    fprintf(stderr, "[ LOG ] - Usage ./test [-h] [-o o_file] [-v] [--timing] [--bitflip] [-m mem_mb] [-p mem_percent] [-r rounds] [-n measurements]\n");
+    fprintf(stderr, "[ LOG ] - Usage ./test [-h] [-o o_file] [-v] [--timing] [--bitflip] [-m mem_mb] [-p mem_percent] [-r rounds] [-n measurements] [-c core_id]\n");
     fprintf(stderr, "          -h                     = this help message\n");
     fprintf(stderr, "          -o o_file              = output file for mem profiling      (default: %s)\n", O_FILE_std);
     fprintf(stderr, "          --timing               = run timing measurement instead of rev_mc\n");
@@ -56,6 +57,7 @@ void print_usage() {
     fprintf(stderr, "          -p mem_percent         = memory size as percentage of total  (overrides -m)\n");
     fprintf(stderr, "          -r rounds              = number of rounds                    (default: %d)\n", ROUNDS_std);
     fprintf(stderr, "          -n measurements        = number of measurements              (default: %d)\n", MEASUREMENTS_std);
+    fprintf(stderr, "          -c core_id             = CPU core to pin process to          (default: %d)\n", CORE_ID_std);
     fprintf(stderr, "          -v                     = verbose\n\n");
 }
 
@@ -147,21 +149,17 @@ int main(int argc, char** argv) {
     size_t      measurements = MEASUREMENTS_std;  // Number of measurements to perform
     double      mem_percent = 0.0;               // Memory size as percentage of total
     bool        use_percentage = false;          // Flag to use percentage instead of fixed size
+    int         core_id     = CORE_ID_std;       // CPU core to pin process to
 
     // Set default flags for memory population and verbose output
     flags |= F_POPULATE;
     flags |= F_VERBOSE;
-
-    // Pin to core 3 for consistent timing measurements
-    pin_to_core(3);
 
     // Ensure running as root to access /proc/self/pagemap
     if(geteuid() != 0) {
     	fprintf(stderr, "[ERROR] - You need to run as root to access pagemap!\n");
 	exit(1);
     }
-
-    pin_to_core(3); // Pin to core 3 (redundant but ensures consistency)
 
     // Prevent the kernel from swapping out our memory to ensure consistent timing
     if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
@@ -179,7 +177,7 @@ int main(int argc, char** argv) {
               {"bitflip", no_argument, 0, '2'},   // Enable bitflip probing mode
               {0, 0, 0, 0}
             };
-        int arg = getopt_long(argc, argv, "o:hvm:r:n:p:",
+        int arg = getopt_long(argc, argv, "o:hvm:r:n:p:c:",
                               long_options, &option_index);
 
         if (arg == -1)
@@ -226,12 +224,22 @@ int main(int argc, char** argv) {
                 }
                 use_percentage = true;
                 break;
+            case 'c': // CPU core to pin process to
+                core_id = atoi(optarg);
+                if (core_id < 0) {
+                    fprintf(stderr, "[ERROR] - Invalid core ID: %s (must be >= 0)\n", optarg);
+                    return 1;
+                }
+                break;
             case 'h': // Help
             default:
                 print_usage();
                 return 0;
         }
     }
+    
+    // Pin to the specified core for consistent timing measurements
+    pin_to_core(core_id);
     
     // Calculate final memory size based on user input
     size_t m_size;

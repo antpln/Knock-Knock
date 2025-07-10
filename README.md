@@ -109,6 +109,9 @@ sudo ./obj/tester -m 8192  # Use 8GB
 # Use percentage of total memory
 sudo ./obj/tester -p 50    # Use 50% of system memory
 
+# Pin to a specific CPU core (default: core 3)
+sudo ./obj/tester -c 0     # Pin to core 0
+
 # Run bitflip analysis instead of timing measurement
 sudo ./obj/tester --bitflip
 
@@ -187,6 +190,8 @@ The program performs memory analysis through two main operations:
 1. **Timing Measurements** (Default): Analyzes memory access patterns by measuring timing differences between memory accesses to different physical addresses.
 2. **Bitflip Probing** (Optional): Performs controlled bit manipulation to analyze memory mapping and identify relationships between virtual and physical addresses.
 
+**CPU Core Pinning**: The program automatically pins itself to a specific CPU core (default: core 3) to ensure consistent timing measurements. This prevents process migration between cores, which can introduce timing variations that would interfere with the precise measurements needed for DRAM reverse engineering. You can specify a different core using the `-c` parameter.
+
 ### Running the Program
 
 The program must be run with root privileges to access system memory information and performance counters.
@@ -214,6 +219,7 @@ sudo ./obj/tester [OPTIONS]
 | `-p <percent>` | Memory size as percentage of total (overrides `-m`) | - |
 | `-r <rounds>` | Number of rounds | `50` |
 | `-n <measurements>` | Number of measurements | `100000` |
+| `-c <core_id>` | CPU core to pin process to | `3` |
 | `--timing` | Run timing measurement instead of rev_mc | - |
 | `--bitflip` | Run mapping bitflip probe | - |
 | `-v` | Verbose output | - |
@@ -286,6 +292,12 @@ sudo ./obj/tester -p 5 --bitflip
 **Custom output file:**
 ```bash
 sudo ./obj/tester -p 10 -o my_experiment.csv
+```
+
+**Pin to a specific CPU core for consistent timing:**
+```bash
+sudo ./obj/tester -p 10 -c 0  # Pin to core 0
+sudo ./obj/tester -p 10 -c 2  # Pin to core 2
 ```
 
 **Verbose output for debugging:**
