@@ -4,6 +4,20 @@ This repository contains the implementation of **Knock-Knock**, a novel methodol
 
 # /!\ Disclaimer
 This is a Proof-of-Concept of Knock-Knock. While it yields expected results, the fully automated pipeline is not yet implemented at the time of submission. However, the missing automated features, mainly automatic threshold detection and the second timing analysis from the found masks, will be implemented for the artifact evaluation and publication.
+### Complete Workflow Example
+
+```bash
+make clean && make
+
+# 1. Generate timing data
+sudo ./obj/tester -p 5 -n 50000 -r 50
+
+# 2. Analyze the results (adjust threshold based on your data)
+python3 full_analysis.py access_module_<size>.csv --thresh 150 --verbose
+
+# 3. For high-precision analysis
+python3 full_analysis.py access_module_<size>.csv --thresh 150 --subsample 2000 --repeat 100
+```
 
 ## Building and Running
 
@@ -31,6 +45,8 @@ make clean && make
 
 # The binary will be created as obj/tester
 ```
+
+
 
 ### Python Analysis Prerequisites
 
@@ -313,16 +329,3 @@ python3 full_analysis.py <csv_file> --thresh <threshold> [OPTIONS]
 | `--repeat <count>` | Number of repetitions for subsampling | `50` |
 | `--limit <count>` | Limit number of pairs to process (for testing) | None |
 | `--verbose`, `-v` | Enable verbose output | False |
-
-### Complete Workflow Example
-
-```bash
-# 1. Generate timing data
-sudo ./obj/tester -p 5 -n 50000 -r 50
-
-# 2. Analyze the results (adjust threshold based on your data)
-python3 full_analysis.py access_module_<size>.csv --thresh 150 --verbose
-
-# 3. For high-precision analysis
-python3 full_analysis.py access_module_<size>.csv --thresh 150 --subsample 2000 --repeat 100
-```
