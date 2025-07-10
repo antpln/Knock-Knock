@@ -495,7 +495,7 @@ for i, mask in enumerate(best_basis):
     print(f"   {i:2d}: {m_val:#018x}, weight: {len(bits_set)}, bits: {bits_set}")
 
 print(f"   Total minimal Hamming weight: {min_weight}")
-
+found_masks = best_basis
 # Remove linear combinations to get independent set
 print("\n[INFO] Removing linear combinations...")
 found_masks = remove_linear_combinations(found_masks)
