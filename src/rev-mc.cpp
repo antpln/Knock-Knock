@@ -279,7 +279,7 @@ void timing_measurement(size_t rounds, size_t m_size, char *o_file, uint64_t fla
 {
     // Create a log file named with the memory size for organization
     char log_file_name[50];
-    snprintf(log_file_name, sizeof(log_file_name), "access_module_%ld.csv", m_size / 1024 / 1024);
+    snprintf(log_file_name, sizeof(log_file_name), "data/access_module_%ld.csv", m_size / 1024 / 1024);
 
     FILE *log_file = fopen(log_file_name, "w");
     if (log_file == NULL)
@@ -287,9 +287,6 @@ void timing_measurement(size_t rounds, size_t m_size, char *o_file, uint64_t fla
         fprintf(stderr, "[ERROR] - Unable to create log file\n");
         exit(1);
     }
-    // CSV header: physical addresses, timing, virtual addresses
-    fprintf(log_file, "a1,a2,elapsed_cycles,v_a1,v_a2\n");
-
     // CSV header: physical addresses, timing, virtual addresses
     fprintf(log_file, "a1,a2,elapsed_cycles,v_a1,v_a2\n");
 
@@ -414,7 +411,7 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
 
     // Create output file for bitflip analysis results
     char log_file_name[64];
-    snprintf(log_file_name, sizeof(log_file_name), "bitflip_probe_%lu.csv", m_size / (1024 * 1024));
+    snprintf(log_file_name, sizeof(log_file_name), "data/bitflip_probe_%lu.csv", m_size / (1024 * 1024));
     FILE *log_file = fopen(log_file_name, "w");
     if (!log_file) {
         fprintf(stderr, "[ERROR] - Could not create log file.\n");
