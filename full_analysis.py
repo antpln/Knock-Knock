@@ -150,7 +150,7 @@ def load_and_preprocess_data():
             if len(chunks) == 1:
                 print("\n[STATS] Generating timing distribution histogram...")
                 plt.figure(figsize=(10, 6))
-                plt.hist(chunk["elapsed_cycles"], bins=np.linspace(0, 600, 600), 
+                plt.hist(chunk["elapsed_cycles"], bins=np.linspace(0, chunk["elapsed_cycles"].max(), chunk["elapsed_cycles"].max()), 
                         alpha=0.7, label='Elapsed Cycles', density=True, color='skyblue')
                 plt.axvline(x=THRESH, color='red', linestyle='--', linewidth=2, 
                            label=f'Conflict Threshold ({THRESH})')
