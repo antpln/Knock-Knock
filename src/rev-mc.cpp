@@ -271,20 +271,26 @@ addr_tuple gen_addr_tuple(char *v_addr)
  * 
  * @param rounds Number of timing measurements per address pair
  * @param m_size Size of memory buffer to allocate in bytes
- * @param o_file Output file path (unused in current implementation)
+ * @param o_file Output file path (if NULL or empty, uses default naming)
  * @param flags Memory allocation control flags
  * @param measurements Total number of address pairs to measure
  */
 void timing_measurement(size_t rounds, size_t m_size, char *o_file, uint64_t flags, size_t measurements)
 {
-    // Create a log file named with the memory size for organization
-    char log_file_name[50];
-    snprintf(log_file_name, sizeof(log_file_name), "data/access_module_%ld.csv", m_size / 1024 / 1024);
+    // Determine the output filename
+    char log_file_name[256];
+    if (o_file != NULL && strlen(o_file) > 0) {
+        // Use the provided filename
+        snprintf(log_file_name, sizeof(log_file_name), "%s", o_file);
+    } else {
+        // Create a default log file named with the memory size for organization
+        snprintf(log_file_name, sizeof(log_file_name), "data/access_module_%ld.csv", m_size / 1024 / 1024);
+    }
 
     FILE *log_file = fopen(log_file_name, "w");
     if (log_file == NULL)
     {
-        fprintf(stderr, "[ERROR] - Unable to create log file\n");
+        fprintf(stderr, "[ERROR] - Unable to create log file: %s\n", log_file_name);
         exit(1);
     }
     // CSV header: physical addresses, timing, virtual addresses

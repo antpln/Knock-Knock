@@ -9,14 +9,15 @@ This is a Proof-of-Concept of Knock-Knock. While it yields expected results, the
 ```bash
 make clean && make
 
-# 1. Generate timing data
-sudo ./obj/tester -p 5 -n 50000 -r 50
+# 1. Generate timing data with auto-generated filename
+sudo ./obj/tester -p 5 -n 50000 -r 50 -a
 
 # 2. Analyze the results (adjust threshold based on your data)
-python3 full_analysis.py access_module_<size>.csv --thresh 150 --verbose
+# The filename will be <hostname>_<size_in_mb>.csv
+python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --verbose
 
 # 3. For high-precision analysis
-python3 full_analysis.py access_module_<size>.csv --thresh 150 --subsample 2000 --repeat 100
+python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --subsample 2000 --repeat 100
 ```
 
 ## Building and Running
@@ -109,9 +110,6 @@ sudo ./obj/tester -m 8192  # Use 8GB
 # Use percentage of total memory
 sudo ./obj/tester -p 50    # Use 50% of system memory
 
-# Pin to a specific CPU core (default: core 3)
-sudo ./obj/tester -c 0     # Pin to core 0
-
 # Run bitflip analysis instead of timing measurement
 sudo ./obj/tester --bitflip
 
@@ -120,6 +118,9 @@ sudo ./obj/tester -n 50000 -r 100
 
 # Specify output file
 sudo ./obj/tester -o custom_output.csv
+
+# Auto-generate filename based on hostname and memory size
+sudo ./obj/tester -a  # Creates <hostname>_<size_in_mb>.csv
 ```
 
 ### Command-Line Options
@@ -129,13 +130,21 @@ sudo ./obj/tester -o custom_output.csv
 - `-r <rounds>`: Number of timing measurement rounds (default: 50)
 - `-n <measurements>`: Number of measurements to perform (default: 100000)
 - `-o <file>`: Output file for results (default: output.csv)
+- `-a`: Auto-generate output filename as `<hostname>_<size_in_mb>.csv`
 - `--timing`: Run timing measurement mode (default)
 - `--bitflip`: Run bitflip probing analysis
 - `-v`: Verbose output
 
+**Note**: The `-o` and `-a` options are mutually exclusive. Use `-o` to specify a custom filename or `-a` to auto-generate based on hostname and memory size.
+
 ## Output Files
 
-The tool generates CSV files containing timing measurements and address mappings:
+The tool generates CSV files containing timing measurements and address mappings. Output filenames depend on the options used:
+
+### Filename Formats
+- **Default**: `access_module_<size_in_mb>.csv` (e.g., `access_module_1024.csv`)
+- **Custom**: Specified with `-o` option (e.g., `custom_output.csv`)
+- **Auto-generated**: `<hostname>_<size_in_mb>.csv` when using `-a` option (e.g., `myserver_1024.csv`)
 
 ### Timing Measurement Output (`access_module_<size>.csv`)
 ```
@@ -190,8 +199,6 @@ The program performs memory analysis through two main operations:
 1. **Timing Measurements** (Default): Analyzes memory access patterns by measuring timing differences between memory accesses to different physical addresses.
 2. **Bitflip Probing** (Optional): Performs controlled bit manipulation to analyze memory mapping and identify relationships between virtual and physical addresses.
 
-**CPU Core Pinning**: The program automatically pins itself to a specific CPU core (default: core 3) to ensure consistent timing measurements. This prevents process migration between cores, which can introduce timing variations that would interfere with the precise measurements needed for DRAM reverse engineering. You can specify a different core using the `-c` parameter.
-
 ### Running the Program
 
 The program must be run with root privileges to access system memory information and performance counters.
@@ -219,7 +226,6 @@ sudo ./obj/tester [OPTIONS]
 | `-p <percent>` | Memory size as percentage of total (overrides `-m`) | - |
 | `-r <rounds>` | Number of rounds | `50` |
 | `-n <measurements>` | Number of measurements | `100000` |
-| `-c <core_id>` | CPU core to pin process to | `3` |
 | `--timing` | Run timing measurement instead of rev_mc | - |
 | `--bitflip` | Run mapping bitflip probe | - |
 | `-v` | Verbose output | - |
@@ -292,12 +298,6 @@ sudo ./obj/tester -p 5 --bitflip
 **Custom output file:**
 ```bash
 sudo ./obj/tester -p 10 -o my_experiment.csv
-```
-
-**Pin to a specific CPU core for consistent timing:**
-```bash
-sudo ./obj/tester -p 10 -c 0  # Pin to core 0
-sudo ./obj/tester -p 10 -c 2  # Pin to core 2
 ```
 
 **Verbose output for debugging:**
