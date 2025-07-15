@@ -109,6 +109,39 @@ uint64_t time_tuple(volatile char *a1, volatile char *a2, size_t rounds)
         asm volatile("mrs %0, pmccntr_el0" : "=r"(t1)); // Time end
 
         times.push_back(t1 - t0);
+        #elif defined(__powerpc64__)
+        /* 1.  Evict a1 / a2 from the data cache */
+        asm volatile("dcbf 0,%0" :: "r"(a1) : "memory");
+        asm volatile("dcbf 0,%0" :: "r"(a2) : "memory");
+
+        /* 2.  Make the write‑backs globally visible */
+        asm volatile("sync");            /* full‑barrier for all threads */
+
+        /* 3.  Give the cache machinery a couple of cycles */
+        asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
+
+        /* 4.  Touch a1 so its row is open (RowHammer‑style pattern) */
+        volatile char val = *(volatile char *)a1;
+
+        /* 5.  Prevent OoO speculation from pulling‑in a2 early      */
+        if (val == 0xAB)                 /* dummy data‑dependent branch */
+            asm volatile("nop" ::: "memory");
+
+        asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
+
+        /* 6‑7.  Time the access to a2 ********************************/
+
+        asm volatile("sync");            /* drain prior writes/reads   */
+        asm volatile("isync");           /* serialise the pipeline     */
+        t0 = __builtin_ppc_get_timebase();   /* TIME‑START (64‑bit)   */
+
+        val = *(volatile char *)a2;     /*   >>> load a2 <<<     */
+
+        asm volatile("sync");
+        asm volatile("isync");
+        t1 = __builtin_ppc_get_timebase();   /* TIME‑END              */
+
+        times.push_back(t1 - t0);
         #else
 
         asm volatile("clflush (%0)" ::"r"(a1));
@@ -198,25 +231,25 @@ uint64_t get_pfn(uint64_t entry)
 uint64_t get_phys_addr(uint64_t v_addr)
 {
     uint64_t entry;
-    uint64_t offset = (v_addr / 4096) * sizeof(entry);  // Calculate pagemap offset
-    uint64_t pfn;
-    
-    // Open pagemap file
+    long page_sz   = sysconf(_SC_PAGESIZE);          /* 4096 or 65536   */
+    int  page_shift = __builtin_ctzl(page_sz);       /* 12 or 16        */
+
+    uint64_t offset = (v_addr >> page_shift) * 8;    /* correct seek    */
+
     int fd = open("/proc/self/pagemap", O_RDONLY);
     assert(fd >= 0);
-    
-    // Read the pagemap entry for this virtual address
-    int bytes_read = pread(fd, &entry, sizeof(entry), offset);
+
+    ssize_t n = pread(fd, &entry, sizeof(entry), offset);
     close(fd);
-    assert(bytes_read == 8);
-    assert(entry & (1ULL << 63));  // Ensure page is present
-    
-    pfn = get_pfn(entry);
-    assert(pfn != 0);
-    
-    // Combine PFN with page offset to get full physical address
-    return (pfn * 4096) | (v_addr & 4095);
+    assert(n == 8);
+    assert(entry & (1ULL << 63));                    /* page present    */
+
+    uint64_t pfn = entry & ((1ULL<<55) - 1);         /* bits 0‑54       */
+    assert(pfn != 0 && "need CAP_SYS_ADMIN or root");/* may still trip  */
+
+    return (pfn << page_shift) | (v_addr & (page_sz - 1));
 }
+
 
 /**
  * @brief Converts a physical address to a virtual address using a PFN-to-VA map
