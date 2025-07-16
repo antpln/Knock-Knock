@@ -27,6 +27,7 @@ python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --subsamp
 - GCC with C++11 support
 - Make build system
 - Python 3
+- x86, ARMv8 or ppc64le architectures
 
 ### Performance Counter Setup (ARMv8 only)
 **Note**: The performance counter kernel module is only required for ARMv8 devices. On x86_64 systems, the program will work without additional setup.
