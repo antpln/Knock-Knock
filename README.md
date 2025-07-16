@@ -20,12 +20,6 @@ python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --verbose
 python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --subsample 2000 --repeat 100
 ```
 
-## Example file
-An example file coming from a real-world target is provided in this repo. To try it :
-```bash
-python3 full_analysis.py data/example.csv --thresh 236
-```
-
 ## Building and Running
 
 ### Prerequisites
