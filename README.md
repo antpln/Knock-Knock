@@ -3,7 +3,7 @@
 This repository contains the implementation of **Knock-Knock**, a novel methodology for reverse engineering DRAM memory controller address mappings using timing-based side-channel attacks. The tool provides an automated approach to recover bank and row addressing functions without requiring platform-specific knowledge.
 
 # /!\ Disclaimer
-This is a Proof-of-Concept of Knock-Knock. While it yields expected results, the fully automated pipeline is not yet implemented at the time of submission. However, the missing automated features, mainly automatic threshold detection and the second timing analysis from the found masks, will be implemented for the artifact evaluation and publication.
+This repository now implements the full Knock-Knock workflow end-to-end, including reliable automatic threshold detection and the second-stage timing analysis that derives row masks from the recovered bank masks.
 ### Complete Workflow Example
 
 ```bash

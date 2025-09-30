@@ -1,0 +1,18 @@
+# Build outputs
+main
+obj/
+src/.obj/
+*.o
+
+# Test binaries
+tests/threshold/test_threshold
+tests/bin/
+
+# Analysis artifacts
+analysis_points.dat
+latencies.dat
+smoothed_histogram.dat
+output.csv
+
+# Python cache
+__pycache__/

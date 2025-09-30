@@ -438,27 +438,42 @@ def remove_linear_combinations(masks, target_dimension=None):
         Same representation as input, but only independent, lightest first.
     """
     # 1) sort once by Hamming weight
-    masks_sorted = sorted(masks, key=_weight)
+    order = sorted(range(len(masks)), key=lambda idx: _weight(masks[idx]))
 
-    kept       = []                           # output list
-    basis_mat  = GF.Zeros((0, 64))           # current basis (GF(2) array)
+    def to_int(mask):
+        if isinstance(mask, np.ndarray):
+            return int(np.packbits(mask, bitorder="little").view(np.uint64)[0])
+        return int(mask)
 
-    for mask in masks_sorted:
-        vec_bits = _as_bits(mask)
-        v        = GF(vec_bits)
+    def to_array(mask_int):
+        raw = np.array([mask_int], dtype=np.uint64).view(np.uint8)
+        return np.unpackbits(raw, bitorder="little")[:64].astype(np.uint8)
 
-        # concatenate current basis with candidate vector (NumPy), then cast
-        stacked = np.vstack([basis_mat.view(np.ndarray), v.view(np.ndarray)])
-        candidate = GF(stacked)              # back to GF(2)
+    basis = [0] * 64
+    kept_ints = []
 
-        pivots = candidate.row_reduce()     # GF(2) row-reduction
-        if len(pivots) > basis_mat.shape[0]:  # rank increased → independent
-            kept.append(mask)
-            basis_mat = candidate             # extend basis
-            if target_dimension and len(kept) >= target_dimension:
+    for idx in order:
+        value = to_int(masks[idx])
+        candidate = value
+        independent = False
+        for bit in range(63, -1, -1):
+            pivot = 1 << bit
+            if candidate & pivot == 0:
+                continue
+            if basis[bit] == 0:
+                basis[bit] = candidate
+                independent = True
+                break
+            candidate ^= basis[bit]
+
+        if independent:
+            kept_ints.append(value)
+            if target_dimension and len(kept_ints) >= target_dimension:
                 break
 
-    return kept
+    if isinstance(masks[0], np.ndarray):
+        return [to_array(value) for value in kept_ints]
+    return kept_ints
 
 
 def minimal_hamming_weight_basis(masks):

@@ -37,6 +37,8 @@
 //----------------------------------------------------------
 // 			Static inline functions for cache and timing operations
 
+#ifdef __aarch64__
+
 /**
  * @brief Flush a cache line containing the given address (ARM64)
  * 
@@ -110,6 +112,49 @@ static inline __attribute__((always_inline)) uint64_t rdtscp(void) {
     return timer_value;
 }
 
+#else // Assuming x86_64 for non-ARM
+
+/**
+ * @brief Flush a cache line containing the given address (x86)
+ */
+static inline __attribute__((always_inline)) void clflush(volatile void *p) {
+    asm volatile("clflush (%0)" ::"r"(p));
+}
+
+/**
+ * @brief Memory fence (x86)
+ */
+static inline __attribute__((always_inline)) void mfence(void) {
+    asm volatile("mfence" ::: "memory");
+}
+
+/**
+ * @brief Load fence (x86)
+ */
+static inline __attribute__((always_inline)) void lfence(void) {
+    asm volatile("lfence" ::: "memory");
+}
+
+/**
+ * @brief Read timestamp counter (x86)
+ */
+static inline __attribute__((always_inline)) uint64_t rdtsc(void) {
+    uint64_t a, d;
+    asm volatile("rdtsc" : "=a"(a), "=d"(d));
+    return (d << 32) | a;
+}
+
+/**
+ * @brief Read timestamp counter with serialization (x86)
+ */
+static inline __attribute__((always_inline)) uint64_t rdtscp(void) {
+    uint64_t a, d, c;
+    asm volatile("rdtscp" : "=a"(a), "=d"(d), "=c"(c));
+    return (d << 32) | a;
+}
+
+#endif
+
 
 //----------------------------------------------------------
 // 			Memory allocation structures and functions
@@ -146,4 +191,6 @@ int alloc_buffer(mem_buff_t* mem);
  * @return 0 on success, -1 on failure
  */
 int free_buffer(mem_buff_t* mem);
+
+uint64_t virt_to_phys(uint64_t v_addr);
 

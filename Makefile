@@ -1,46 +1,56 @@
-SDIR=src
-IDIR=$(SDIR)/include
-LDIR=lib
-BUILD=obj
-ODIR=src/.obj
+# Makefile for DRAM Reverse Engineering Tool
 
-CXXFLAGS=-I$(IDIR) -O0 -g#-ggdb
-CXX=g++
-LDFLAGS=
+# Compiler and flags
+CXX = g++
+CXXFLAGS = -std=c++11 -O2 -g -Isrc/include -Ienable_arm_pmu
+LDFLAGS = -lrt -lpthread
 
-OUT=tester
+# Source files
+SRCS = src/main.cpp src/utils.cpp src/rev-mc.cpp src/full_analysis.cpp src/linalg.cpp src/threshold.cpp
+OBJS = $(SRCS:.cpp=.o)
 
-LDEPS=
+# Tests
+TEST_SRCS = tests/threshold/test_threshold.cpp
+TEST_TARGETS = tests/bin/test_threshold
 
-GB_PAGE=/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
-HUGEPAGE=/mnt/huge
+# Target executable
+TARGET = main
 
-all: $(OUT)
-.PHONY: clean
+# Default target
+all: $(TARGET)
 
+test: $(TEST_TARGETS)
+	@passed=0; failed=0; total=0; \
+	for t in $(TEST_TARGETS); do \
+		total=$$((total + 1)); \
+		printf "[TEST] %s\n" "$$t"; \
+		"$$t"; \
+		status=$$?; \
+		if [ $$status -eq 0 ]; then \
+			passed=$$((passed + 1)); \
+			printf "  PASS %s\n" "$$t"; \
+		else \
+			failed=$$((failed + 1)); \
+			printf "  FAIL %s (exit %d)\n" "$$t" "$$status"; \
+		fi; \
+	done; \
+	printf "\nTest summary: %d passed | %d failed | %d total\n" $$passed $$failed $$total; \
+	if [ $$failed -ne 0 ]; then exit 1; fi
 
-SOURCES := $(wildcard $(SDIR)/*.cpp)
-OBJECTS := $(patsubst $(SDIR)/%.cpp, $(ODIR)/%.o, $(SOURCES))
+# Rule to build the target executable
+$(TARGET): $(OBJS)
+	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-# Assembly sources
-# ASM_SOURCES := $(wildcard $(SDIR)/*.S)
-# ASM_OBJECTS := $(patsubst $(SDIR)/%.S, $(ODIR)/%.o, $(ASM_SOURCES))
+$(TEST_TARGETS): $(TEST_SRCS) src/threshold.cpp src/include/threshold.h
+	mkdir -p tests/bin
+	$(CXX) $(CXXFLAGS) $(TEST_SRCS) src/threshold.cpp -o $@ $(LDFLAGS)
 
-$(ODIR)/%.o: $(SDIR)/%.cpp
-	mkdir -p data
-	mkdir -p $(ODIR)
-	$(CXX) -o $@ -c $< $(CXXFLAGS) $(LDFLAGS) $(LDEPS)
+# Rule to compile source files into object files
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-$(ODIR)/%.o: $(SDIR)/%.S
-	mkdir -p $(ODIR)
-	$(CXX) -o $@ -c $< $(CXXFLAGS) $(LDFLAGS) $(LDEPS)
-
-
-$(OUT): $(OBJECTS) $(ASM_OBJECTS)
-	mkdir -p $(BUILD)
-	$(CXX) -o $(BUILD)/$@ $^ $(CXXFLAGS) $(LDFLAGS) $(LDEPS)
-	chmod +x $(BUILD)/$@
-
+# Clean rule
 clean:
-	rm -rf $(BUILD)
-	rm -rf $(ODIR)
+	rm -f $(OBJS) $(TARGET) $(TEST_TARGETS)
+
+.PHONY: all clean test

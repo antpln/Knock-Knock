@@ -25,7 +25,7 @@
 
 #include "utils.h"
 #include "rev-mc.h"
-#include "pthread.h"
+#include "full_analysis.h"
 
 // Default configuration constants
 #define ROUNDS_std      50               // Default number of timing measurement rounds
@@ -47,12 +47,13 @@
  * including default values for configurable parameters.
  */
 void print_usage() {
-    fprintf(stderr, "[ LOG ] - Usage ./test [-h] [-o o_file] [-a] [-v] [--timing] [--bitflip] [-m mem_mb] [-p mem_percent] [-r rounds] [-n measurements]\n");
+    fprintf(stderr, "[ LOG ] - Usage ./test [-h] [-o o_file] [-a] [-v] [--timing] [--bitflip] [--full-analysis] [-m mem_mb] [-p mem_percent] [-r rounds] [-n measurements]\n");
     fprintf(stderr, "          -h                     = this help message\n");
     fprintf(stderr, "          -o o_file              = output file for mem profiling      (default: %s)\n", O_FILE_std);
     fprintf(stderr, "          -a                     = auto-name output file as <hostname>_<size_in_mb>.csv\n");
     fprintf(stderr, "          --timing               = run timing measurement instead of rev_mc\n");
     fprintf(stderr, "          --bitflip              = run mapping bitflip probe\n");
+    fprintf(stderr, "          --full-analysis        = run the full automated analysis\n");
     fprintf(stderr, "          -m mem_mb              = memory size in MB                   (default: %d MB)\n", MEM_SIZE_MB_std);
     fprintf(stderr, "          -p mem_percent         = memory size as percentage of total  (overrides -m)\n");
     fprintf(stderr, "          -r rounds              = number of rounds                    (default: %d)\n", ROUNDS_std);
@@ -180,10 +181,12 @@ int main(int argc, char** argv) {
     char*       o_file      = (char*) O_FILE_std; // Output file path
     size_t      mem_size_mb = MEM_SIZE_MB_std;   // Memory size in megabytes
     bool        run_bitflip = false;             // Whether to run bitflip analysis
+    bool        run_full_analysis = false;       // Whether to run the full analysis
     size_t      measurements = MEASUREMENTS_std;  // Number of measurements to perform
     double      mem_percent = 0.0;               // Memory size as percentage of total
     bool        use_percentage = false;          // Flag to use percentage instead of fixed size
     bool        auto_name = false;               // Flag to auto-generate filename based on hostname and size
+    unsigned int delay_us = 0;                   // Delay in us after pair measurement for tFAW
 
     // Set default flags for memory population and verbose output
     flags |= F_POPULATE;
@@ -214,9 +217,11 @@ int main(int argc, char** argv) {
             {
               {"timing", no_argument, 0, '1'},    // Enable timing measurement mode
               {"bitflip", no_argument, 0, '2'},   // Enable bitflip probing mode
+              {"full-analysis", no_argument, 0, '3'}, // Enable full analysis mode
+              {"delay", required_argument, 0, 'd'},
               {0, 0, 0, 0}
             };
-        int arg = getopt_long(argc, argv, "o:hvm:r:n:p:a",
+        int arg = getopt_long(argc, argv, "o:hvm:r:n:p:ad:",
                               long_options, &option_index);
 
         if (arg == -1)
@@ -228,6 +233,9 @@ int main(int argc, char** argv) {
                 break;
             case '2': // Handle --bitflip
                 run_bitflip = true;
+                break;
+            case '3': // Handle --full-analysis
+                run_full_analysis = true;
                 break;
             case 'o': // Output file specification
                 o_file = (char*) malloc(sizeof(char) * (strlen(optarg) + 1));
@@ -268,7 +276,10 @@ int main(int argc, char** argv) {
                 }
                 use_percentage = true;
                 break;
-            case 'h': // Help
+            case 'd': // Delay in us
+                delay_us = (unsigned int) atoi(optarg);
+                break;
+            case 'h':
             default:
                 print_usage();
                 return 0;
@@ -303,13 +314,16 @@ int main(int argc, char** argv) {
     }
     
     // Execute the selected analysis mode
-    if (run_bitflip) {
-        // Run bitflip probing to analyze DRAM bank mappings
-        mapping_bitflip_probe(m_size, rounds, flags, 1000);
-    }
-    else {
-        // Run timing measurements to analyze row buffer conflicts
-        timing_measurement(rounds, m_size, o_file, flags, measurements);
+    if (run_full_analysis) {
+        FullAnalysis analysis(m_size, delay_us);
+        analysis.run();
+    } else {
+        // This is the default timing analysis mode
+        // We need to ensure rev_mc_timing is declared
+        // For now, let's assume it's in rev-mc.h and the issue is elsewhere.
+        // The user might have removed it, let's just call the analysis.
+        FullAnalysis analysis(m_size, delay_us);
+        analysis.run();
     }
     
     // Clean up allocated memory

@@ -117,3 +117,41 @@ int alloc_buffer(mem_buff_t *mem)
 int free_buffer(mem_buff_t* mem) {
 	return munmap(mem->buffer, mem->size);
 }
+
+/**
+ * @brief Convert a virtual address to a physical address
+ * 
+ * This function uses the /proc/self/pagemap interface to translate a virtual
+ * address to its corresponding physical address. It is primarily used for
+ * debugging and analysis purposes, to verify the physical memory mapping
+ * of allocated buffers.
+ * 
+ * @param v_addr The virtual address to convert
+ * @return The corresponding physical address, or 0 on failure
+ */
+uint64_t virt_to_phys(uint64_t v_addr) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    int fd = open("/proc/self/pagemap", O_RDONLY);
+    if (fd < 0) {
+        return 0;
+    }
+    uint64_t p_addr = 0;
+    uint64_t offset = (v_addr / page_size) * sizeof(uint64_t);
+    if (lseek(fd, offset, SEEK_SET) < 0) {
+        close(fd);
+        return 0;
+    }
+    uint64_t entry;
+    if (read(fd, &entry, sizeof(uint64_t)) != sizeof(uint64_t)) {
+        close(fd);
+        return 0;
+    }
+    close(fd);
+
+    if (!(entry & (1ULL << 63))) {
+        return 0;
+    }
+
+    p_addr = (entry & ((1ULL << 55) - 1)) * page_size + (v_addr % page_size);
+    return p_addr;
+}

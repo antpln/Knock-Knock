@@ -40,6 +40,107 @@ static inline uint64_t read_pmccntr(void)
 
 
 
+uint64_t measure_one_block_access_time(volatile void* p1, volatile void* p2)
+{
+    uint64_t t0, t1;
+    
+    #if defined(__aarch64__)
+    // Evict both addresses from the cache to eliminate cache effects
+    asm volatile("DC CIVAC, %0" ::"r"(p1));  // Clean & invalidate p1
+    asm volatile("DC CIVAC, %0" ::"r"(p2));  // Clean & invalidate p2
+
+    // Memory barriers to ensure cache operations complete
+    asm volatile("DSB SY");  // Data synchronization barrier
+    asm volatile("ISB");
+    asm volatile("NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP");
+    // Access p1 to open its row
+    volatile char val = *(volatile char *)p1;
+
+    // Conditional branch to prevent OoO speculation
+    if (val == 0xAB)
+    {
+        asm volatile("nop" ::: "memory");
+    }
+
+    // Create a fake dependency on val, but don’t change the address
+    // this allows to avoid speculative load of p2
+    uintptr_t safe_ptr;
+    asm volatile(
+        "add %0, %1, #0\n\t"
+        "eor %0, %0, %2\n\t"
+        "eor %0, %0, %2\n\t"
+        : "=r"(safe_ptr)
+        : "r"(p2), "r"(val)
+        : "memory");
+    volatile void *safe_p2 = (void *)safe_ptr;
+    assert(safe_p2 == p2 && "safe_p2 should equal p2 (dependency transformation failed!)");
+
+    asm volatile("NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP");
+
+    // Time access to actual p2
+    asm volatile("DSB SY");
+    asm volatile("ISB");
+    asm volatile("mrs %0, pmccntr_el0" : "=r"(t0)); // Time start
+    val = *(volatile char *)safe_p2;
+    asm volatile("DSB SY");
+    asm volatile("ISB");
+    asm volatile("mrs %0, pmccntr_el0" : "=r"(t1)); // Time end
+
+    return t1 - t0;
+
+    #elif defined(__powerpc64__)
+    /* 1.  Evict p1 / p2 from the data cache */
+    asm volatile("dcbf 0,%0" :: "r"(p1) : "memory");
+    asm volatile("dcbf 0,%0" :: "r"(p2) : "memory");
+
+    /* 2.  Make the write‑backs globally visible */
+    asm volatile("sync");            /* full‑barrier for all threads */
+
+    /* 3.  Give the cache machinery a couple of cycles */
+    asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
+
+    /* 4.  Touch p1 so its row is open (RowHammer‑style pattern) */
+    volatile char val = *(volatile char *)p1;
+
+    /* 5.  Prevent OoO speculation from pulling‑in p2 early      */
+    if (val == 0xAB)                 /* dummy data‑dependent branch */
+        asm volatile("nop" ::: "memory");
+
+    asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
+
+    /* 6‑7.  Time the access to p2 ********************************/
+
+    asm volatile("sync");            /* drain prior writes/reads   */
+    asm volatile("isync");           /* serialise the pipeline     */
+    t0 = __builtin_ppc_get_timebase();   /* TIME‑START (64‑bit)   */
+
+    val = *(volatile char *)p2;     /*   >>> load p2 <<<     */
+
+    asm volatile("sync");
+    asm volatile("isync");
+    t1 = __builtin_ppc_get_timebase();   /* TIME‑END              */
+
+    return t1 - t0;
+
+    #else // Default to x86
+    asm volatile("clflush (%0)" ::"r"(p1));
+    asm volatile("clflush (%0)" ::"r"(p2));
+    asm volatile("mfence"); // Ensure all cache flushes are complete
+    asm volatile("lfence");
+    
+    volatile char val = *(volatile char *)p1;
+    asm volatile("mfence"); // Ensure the load is complete before timing
+    asm volatile("lfence");
+    t0 = rdtsc(); // Time start
+    val = *(volatile char *)p2;
+    asm volatile("mfence"); // Ensure the load is complete before timing
+    asm volatile("lfence");
+    t1 = rdtscp(); // Time end with serialization
+
+    return t1 - t0;
+    #endif
+}
+
 /**
  * @brief Measures access time between two memory addresses with high precision
  * 
@@ -62,111 +163,16 @@ uint64_t time_tuple(volatile char *a1, volatile char *a2, size_t rounds)
 {
     std::vector<uint64_t> times;
     times.reserve(rounds);
-    uint64_t t0, t1;
     
     for (size_t i = 0; i < rounds; i++)
     {
-        #ifdef __aarch64__
-        // Evict both addresses from the cache to eliminate cache effects
-        asm volatile("DC CIVAC, %0" ::"r"(a1));  // Clean & invalidate a1
-        asm volatile("DC CIVAC, %0" ::"r"(a2));  // Clean & invalidate a2
-
-        // Memory barriers to ensure cache operations complete
-        asm volatile("DSB SY");  // Data synchronization barrier
-        asm volatile("ISB");
-        asm volatile("NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP");
-        // Access a1 to open its row
-        volatile char val = *(volatile char *)a1;
-
-        // Conditional branch to prevent OoO speculation
-        if (val == 0xAB)
-        {
-            asm volatile("nop" ::: "memory");
-        }
-
-        // Create a fake dependency on val, but don’t change the address
-        // this allows to avoid speculative load of a2
-        uintptr_t safe_ptr;
-        asm volatile(
-            "add %0, %1, #0\n\t"
-            "eor %0, %0, %2\n\t"
-            "eor %0, %0, %2\n\t"
-            : "=r"(safe_ptr)
-            : "r"(a2), "r"(val)
-            : "memory");
-        volatile char *safe_a2 = (char *)safe_ptr;
-        assert(safe_a2 == a2 && "safe_a2 should equal a2 (dependency transformation failed!)");
-
-        asm volatile("NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP");
-
-        // Time access to actual a2
-        asm volatile("DSB SY");
-        asm volatile("ISB");
-        asm volatile("mrs %0, pmccntr_el0" : "=r"(t0)); // Time start
-        val = *(volatile char *)safe_a2;
-        asm volatile("DSB SY");
-        asm volatile("ISB");
-        asm volatile("mrs %0, pmccntr_el0" : "=r"(t1)); // Time end
-
-        times.push_back(t1 - t0);
-        #elif defined(__powerpc64__)
-        /* 1.  Evict a1 / a2 from the data cache */
-        asm volatile("dcbf 0,%0" :: "r"(a1) : "memory");
-        asm volatile("dcbf 0,%0" :: "r"(a2) : "memory");
-
-        /* 2.  Make the write‑backs globally visible */
-        asm volatile("sync");            /* full‑barrier for all threads */
-
-        /* 3.  Give the cache machinery a couple of cycles */
-        asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
-
-        /* 4.  Touch a1 so its row is open (RowHammer‑style pattern) */
-        volatile char val = *(volatile char *)a1;
-
-        /* 5.  Prevent OoO speculation from pulling‑in a2 early      */
-        if (val == 0xAB)                 /* dummy data‑dependent branch */
-            asm volatile("nop" ::: "memory");
-
-        asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
-
-        /* 6‑7.  Time the access to a2 ********************************/
-
-        asm volatile("sync");            /* drain prior writes/reads   */
-        asm volatile("isync");           /* serialise the pipeline     */
-        t0 = __builtin_ppc_get_timebase();   /* TIME‑START (64‑bit)   */
-
-        val = *(volatile char *)a2;     /*   >>> load a2 <<<     */
-
-        asm volatile("sync");
-        asm volatile("isync");
-        t1 = __builtin_ppc_get_timebase();   /* TIME‑END              */
-
-        times.push_back(t1 - t0);
-        #else
-
-        asm volatile("clflush (%0)" ::"r"(a1));
-        asm volatile("clflush (%0)" ::"r"(a2));
-        asm volatile("mfence"); // Ensure all cache flushes are complete
-        asm volatile("lfence");
-        
-        volatile char val = *(volatile char *)a1;
-        asm volatile("mfence"); // Ensure the load is complete before timing
-        asm volatile("lfence");
-        asm volatile("rdtsc" : "=A"(t0)); // Time start
-        val = *(volatile char *)a2;
-        asm volatile("mfence"); // Ensure the load is complete before timing
-        asm volatile("lfence");
-        asm volatile("rdtsc" : "=A"(t1)); // Time end
-
-        times.push_back(t1 - t0);
-        #endif
-        
-
+        times.push_back(measure_one_block_access_time(a1, a2));
     }
     std::sort(times.begin(), times.end());
     uint64_t median_time = times[times.size() / 2];
     return median_time;
 }
+
 
 /**
  * @brief Generates a random address within the allocated memory buffer
