@@ -1,19 +1,20 @@
-# Knock-Knock: Blind, Platform-Agnostic DRAM Address-Mapping Reverse Engineering
+# Knock-Knock: Blind, Platform-Agnostic DRAM Address-Mapping Reverse Engineering (uASC '26)
+
 
 This repository contains the implementation of **Knock-Knock**, a novel methodology for reverse engineering DRAM memory controller address mappings using timing-based side-channel attacks. The tool provides an automated approach to recover bank and row addressing functions without requiring platform-specific knowledge.
 
-# /!\ Disclaimer
-This repository now implements the full Knock-Knock workflow end-to-end, including reliable automatic threshold detection and the second-stage timing analysis that derives row masks from the recovered bank masks.
 ### Complete Workflow Example
 
 ```bash
 make clean && make
 
-# 1. Generate timing data with auto-generated filename
-sudo ./obj/tester -p 5 -n 50000 -r 50 -a
+# 1. Run the automated C++ pipeline (threshold + bank/row discovery)
+sudo ./obj/tester --full-analysis -p 5 -n 50000 -r 50
 
-# 2. Analyze the results (adjust threshold based on your data)
-# The filename will be <hostname>_<size_in_mb>.csv
+# (Optional) 2. Collect a CSV for offline analysis
+sudo ./obj/tester -a -p 5 -n 50000 -r 50
+
+# (Optional) 3. Re-run the analysis in Python for additional reporting
 python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --verbose
 
 # 3. For high-precision analysis
@@ -22,12 +23,11 @@ python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --subsamp
 
 ## Building and Running
 
-### Prerequisites
-- Linux system with root privileges (for `/proc/self/pagemap` access)
-- GCC with C++11 support
-- Make build system
-- Python 3
-- x86, ARMv8 or ppc64le architectures
+### System Requirements
+- Linux host with root privileges (required for `/proc/self/pagemap` access and PMU control)
+- GCC with C++11 support and `make`
+- Supported CPU architectures: x86_64, ARMv8, or ppc64le (POWER9/POWER10)
+- Optional: Python 3.7+ for offline `full_analysis.py`
 
 ### Performance Counter Setup (ARMv8 only)
 **Note**: The performance counter kernel module is only required for ARMv8 devices. On x86_64 systems, the program will work without additional setup.
@@ -50,9 +50,9 @@ make clean && make
 
 
 
-### Python Analysis Prerequisites
+### Python Analysis Requirements
 
-The Python analysis component requires specific packages for mathematical operations and data processing:
+The offline analyser mirrors the automated C++ stages and relies on the following packages:
 
 #### Option 1: Using Portable Virtual Environment (Recommended)
 A portable Python virtual environment is provided in the repository for easy setup:
@@ -86,9 +86,9 @@ python3 -c "import numpy, pandas, matplotlib, galois, scipy; print('All dependen
 - **Python 3.7+**: Base interpreter
 - **NumPy**: Numerical computing and matrix operations
 - **Pandas**: Data manipulation and CSV processing  
-- **Matplotlib**: Plotting and visualization
-- **galois**: Galois field (GF(2)) operations for linear algebra
-- **SciPy**: Scientific computing and statistical functions
+- **Matplotlib**: Optional plotting support for threshold diagnostics
+- **galois**: GF(2) linear algebra backend used for mask extraction
+- **SciPy**: Supplemental scientific routines (smoothing, statistics)
 
 #### Dependency Check
 To verify your Python environment is ready:
@@ -134,7 +134,13 @@ sudo ./obj/tester -a  # Creates <hostname>_<size_in_mb>.csv
 - `-a`: Auto-generate output filename as `<hostname>_<size_in_mb>.csv`
 - `--timing`: Run timing measurement mode (default)
 - `--bitflip`: Run bitflip probing analysis
+- `--full-analysis`: Execute the end-to-end automated pipeline (threshold detection → bank masks → row masks) and print discovered masks directly on the console
 - `-v`: Verbose output
+
+Typical parameter choices:
+- `-p 5` tells the tool to allocate 5 % of the available DRAM. Use smaller percentages for quick scans or larger percentages for higher fidelity.
+- `-n 50000` controls how many address pairs are sampled per round; more samples improve confidence at the cost of runtime.
+- `-r 50` sets how many times each tuple is measured; increase this if you need tighter timing distributions.
 
 **Note**: The `-o` and `-a` options are mutually exclusive. Use `-o` to specify a custom filename or `-a` to auto-generate based on hostname and memory size.
 
@@ -179,6 +185,11 @@ deadbeef,12345678,00000400,cafebabe,12341278,156
 - Uses `clflush` instruction for cache eviction
 - Employs `rdtsc` instruction for timing measurements
 - Includes appropriate memory fences and barriers
+
+### POWER (ppc64le)
+- Uses `dcbf` to flush cache lines and `sync/isync` barriers for ordering
+- Employs the time-base register for cycle counting on POWER9/POWER10 parts
+- Shares the same anti-speculation pattern as the ARM implementation to eliminate OoO noise
 
 ## Features
 
