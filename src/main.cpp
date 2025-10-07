@@ -47,18 +47,54 @@
  * including default values for configurable parameters.
  */
 void print_usage() {
-    fprintf(stderr, "[ LOG ] - Usage ./test [-h] [-o o_file] [-a] [-v] [--timing] [--bitflip] [--full-analysis] [-m mem_mb] [-p mem_percent] [-r rounds] [-n measurements]\n");
-    fprintf(stderr, "          -h                     = this help message\n");
-    fprintf(stderr, "          -o o_file              = output file for mem profiling      (default: %s)\n", O_FILE_std);
-    fprintf(stderr, "          -a                     = auto-name output file as <hostname>_<size_in_mb>.csv\n");
-    fprintf(stderr, "          --timing               = run timing measurement instead of rev_mc\n");
-    fprintf(stderr, "          --bitflip              = run mapping bitflip probe\n");
-    fprintf(stderr, "          --full-analysis        = run the full automated analysis\n");
-    fprintf(stderr, "          -m mem_mb              = memory size in MB                   (default: %d MB)\n", MEM_SIZE_MB_std);
-    fprintf(stderr, "          -p mem_percent         = memory size as percentage of total  (overrides -m)\n");
-    fprintf(stderr, "          -r rounds              = number of rounds                    (default: %d)\n", ROUNDS_std);
-    fprintf(stderr, "          -n measurements        = number of measurements              (default: %d)\n", MEASUREMENTS_std);
-    fprintf(stderr, "          -v                     = verbose\n\n");
+    fprintf(stderr, "DRAM Reverse Engineering Tool - Knock-Knock Attack Implementation\n\n");
+    fprintf(stderr, "Usage: ./main [OPTIONS]\n\n");
+    fprintf(stderr, "Basic Options:\n");
+    fprintf(stderr, "  -h, --help                     Show this help message\n");
+    fprintf(stderr, "  -v                             Verbose output\n");
+    fprintf(stderr, "  --full-analysis                Run full automated analysis (default mode)\n\n");
+    
+    fprintf(stderr, "Memory Configuration:\n");
+    fprintf(stderr, "  -m <MB>                        Memory size in MB (default: %d MB)\n", MEM_SIZE_MB_std);
+    fprintf(stderr, "  -p <percent>                   Memory size as %% of total (overrides -m)\n");
+    fprintf(stderr, "  -d, --delay <us>               Delay in microseconds after each measurement\n");
+    fprintf(stderr, "                                 (helps avoid tFAW violations, default: 0)\n\n");
+    
+    fprintf(stderr, "Threshold Detection Options:\n");
+    fprintf(stderr, "  --threshold <cycles>           Manually set conflict threshold (skip auto-detection)\n");
+    fprintf(stderr, "  --threshold-samples <n>        Number of samples for threshold detection (default: 100000)\n\n");
+    
+    fprintf(stderr, "Bank Mask Detection Options:\n");
+    fprintf(stderr, "  --bank-conflicts <n>           Target number of conflict samples (default: 5000)\n");
+    fprintf(stderr, "  --bank-measurements <n>        Max measurements for bank detection (default: 3000000)\n");
+    fprintf(stderr, "  --bank-subsample <n>           Subsample size for nullspace analysis (default: 1000)\n");
+    fprintf(stderr, "  --bank-rounds <n>              Number of subsampling rounds (default: 35)\n");
+    fprintf(stderr, "  --bank-attempts <n>            Max retry attempts if first round fails (default: 3)\n\n");
+    
+    fprintf(stderr, "Row Mask Detection Options:\n");
+    fprintf(stderr, "  --row-pairs <n>                Target number of same-bank pairs (default: 8000)\n");
+    fprintf(stderr, "  --row-min-hits <n>             Minimum hit samples required (default: 1000)\n");
+    fprintf(stderr, "  --row-min-conflicts <n>        Minimum conflict samples required (default: 1000)\n");
+    fprintf(stderr, "  --row-max-attempts <n>         Max attempts for row sampling (default: 2400000)\n\n");
+    
+    fprintf(stderr, "Advanced Options:\n");
+    fprintf(stderr, "  --force-multiple-rounds        Force multiple detection rounds even if first succeeds\n\n");
+    
+    fprintf(stderr, "Output Options (legacy):\n");
+    fprintf(stderr, "  -o <file>                      Output file for measurements (default: %s)\n", O_FILE_std);
+    fprintf(stderr, "  -a                             Auto-name output as <hostname>_<size_mb>.csv\n");
+    fprintf(stderr, "  --timing                       Run timing measurement mode\n");
+    fprintf(stderr, "  --bitflip                      Run mapping bitflip probe\n\n");
+    
+    fprintf(stderr, "Examples:\n");
+    fprintf(stderr, "  # Run with default settings:\n");
+    fprintf(stderr, "  sudo ./main --full-analysis\n\n");
+    fprintf(stderr, "  # Use 50%% of system memory:\n");
+    fprintf(stderr, "  sudo ./main --full-analysis -p 50\n\n");
+    fprintf(stderr, "  # Manual threshold and custom bank detection:\n");
+    fprintf(stderr, "  sudo ./main --full-analysis --threshold 180 --bank-conflicts 10000 --bank-rounds 60\n\n");
+    fprintf(stderr, "  # High-precision row detection:\n");
+    fprintf(stderr, "  sudo ./main --full-analysis --row-pairs 15000 --row-min-hits 2000\n\n");
 }
 
 //-----------------------------------------------
@@ -188,6 +224,9 @@ int main(int argc, char** argv) {
     bool        auto_name = false;               // Flag to auto-generate filename based on hostname and size
     unsigned int delay_us = 0;                   // Delay in us after pair measurement for tFAW
 
+    // Analysis configuration with defaults
+    AnalysisConfig analysis_config;
+
     // Set default flags for memory population and verbose output
     flags |= F_POPULATE;
     flags |= F_VERBOSE;
@@ -219,6 +258,23 @@ int main(int argc, char** argv) {
               {"bitflip", no_argument, 0, '2'},   // Enable bitflip probing mode
               {"full-analysis", no_argument, 0, '3'}, // Enable full analysis mode
               {"delay", required_argument, 0, 'd'},
+              {"help", no_argument, 0, 'h'},
+              // Threshold options
+              {"threshold", required_argument, 0, 1000},
+              {"threshold-samples", required_argument, 0, 1001},
+              // Bank mask options
+              {"bank-conflicts", required_argument, 0, 1010},
+              {"bank-measurements", required_argument, 0, 1011},
+              {"bank-subsample", required_argument, 0, 1012},
+              {"bank-rounds", required_argument, 0, 1013},
+              {"bank-attempts", required_argument, 0, 1014},
+              // Row mask options
+              {"row-pairs", required_argument, 0, 1020},
+              {"row-min-hits", required_argument, 0, 1021},
+              {"row-min-conflicts", required_argument, 0, 1022},
+              {"row-max-attempts", required_argument, 0, 1023},
+              // Advanced options
+              {"force-multiple-rounds", no_argument, 0, 1030},
               {0, 0, 0, 0}
             };
         int arg = getopt_long(argc, argv, "o:hvm:r:n:p:ad:",
@@ -279,6 +335,95 @@ int main(int argc, char** argv) {
             case 'd': // Delay in us
                 delay_us = (unsigned int) atoi(optarg);
                 break;
+            
+            // Threshold detection options
+            case 1000: // --threshold
+                analysis_config.manual_threshold = (uint64_t) atol(optarg);
+                if (analysis_config.manual_threshold <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid threshold: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1001: // --threshold-samples
+                analysis_config.threshold_samples = (size_t) atol(optarg);
+                if (analysis_config.threshold_samples <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid threshold samples: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            
+            // Bank mask options
+            case 1010: // --bank-conflicts
+                analysis_config.bank_target_conflicts = (size_t) atol(optarg);
+                if (analysis_config.bank_target_conflicts <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid bank conflicts: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1011: // --bank-measurements
+                analysis_config.bank_max_measurements = (size_t) atol(optarg);
+                if (analysis_config.bank_max_measurements <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid bank measurements: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1012: // --bank-subsample
+                analysis_config.bank_subsample_size = (size_t) atol(optarg);
+                if (analysis_config.bank_subsample_size <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid bank subsample size: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1013: // --bank-rounds
+                analysis_config.bank_repeat_rounds = (size_t) atol(optarg);
+                if (analysis_config.bank_repeat_rounds <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid bank rounds: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1014: // --bank-attempts
+                analysis_config.bank_max_attempts = (size_t) atol(optarg);
+                if (analysis_config.bank_max_attempts <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid bank attempts: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            
+            // Row mask options
+            case 1020: // --row-pairs
+                analysis_config.row_target_pairs = (size_t) atol(optarg);
+                if (analysis_config.row_target_pairs <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid row pairs: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1021: // --row-min-hits
+                analysis_config.row_min_hits = (size_t) atol(optarg);
+                if (analysis_config.row_min_hits <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid row min hits: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1022: // --row-min-conflicts
+                analysis_config.row_min_conflicts = (size_t) atol(optarg);
+                if (analysis_config.row_min_conflicts <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid row min conflicts: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            case 1023: // --row-max-attempts
+                analysis_config.row_max_attempts = (size_t) atol(optarg);
+                if (analysis_config.row_max_attempts <= 0) {
+                    fprintf(stderr, "[ERROR] - Invalid row max attempts: %s\n", optarg);
+                    return 1;
+                }
+                break;
+            
+            // Advanced options
+            case 1030: // --force-multiple-rounds
+                analysis_config.force_multiple_rounds = true;
+                break;
+            
             case 'h':
             default:
                 print_usage();
@@ -315,14 +460,11 @@ int main(int argc, char** argv) {
     
     // Execute the selected analysis mode
     if (run_full_analysis) {
-        FullAnalysis analysis(m_size, delay_us);
+        FullAnalysis analysis(m_size, delay_us, analysis_config);
         analysis.run();
     } else {
-        // This is the default timing analysis mode
-        // We need to ensure rev_mc_timing is declared
-        // For now, let's assume it's in rev-mc.h and the issue is elsewhere.
-        // The user might have removed it, let's just call the analysis.
-        FullAnalysis analysis(m_size, delay_us);
+        // Default to full analysis
+        FullAnalysis analysis(m_size, delay_us, analysis_config);
         analysis.run();
     }
     

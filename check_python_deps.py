@@ -74,7 +74,7 @@ def main():
         print("All required dependencies are satisfied!")
         print("   You can run: python full_analysis.py <csv_file> --thresh <threshold>")
         if not optional_ok:
-            print("ℹSome optional packages are missing (enhanced features)")
+            print("Info: some optional packages are missing (enhanced features)")
     else:
         print("Missing required dependencies!")
         print("\n  To install missing packages:")

@@ -97,7 +97,7 @@ chmod +x activate_analysis.sh
 
 # Test the installation
 echo "Testing installation..."
-python -c "import numpy, pandas, matplotlib, galois, scipy; print('✅ All core packages imported successfully')"
+python -c "import numpy, pandas, matplotlib, galois, scipy; print('All core packages imported successfully')"
 
 # Display package versions
 echo ""

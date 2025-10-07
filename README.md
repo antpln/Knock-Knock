@@ -1,355 +1,327 @@
-# Knock-Knock: Blind, Platform-Agnostic DRAM Address-Mapping Reverse Engineering (uASC '26)
+# Knock-Knock: Black-Box, Platform-Agnostic DRAM Address-Mapping Reverse Engineering [uASC '26]
+## Antoine Plin, Lorenzo Casalino, Thomas Rokicki, Ruben Salvador 
 
+*Automated DRAM address mapping reverse engineering for x86_64, ARMv8, and POWER9/10.*
+Preprint available at https://arxiv.org/abs/2509.19568
 
-This repository contains the implementation of **Knock-Knock**, a novel methodology for reverse engineering DRAM memory controller address mappings using timing-based side-channel attacks. The tool provides an automated approach to recover bank and row addressing functions without requiring platform-specific knowledge.
+## Overview
 
-### Complete Workflow Example
+Knock-Knock provides two workflows for DRAM reverse engineering:
 
+1. **Automatic Pipeline** (`main --full-analysis`): Complete C++ implementation that automatically detects thresholds, discovers bank masks, and derives row masks in one run.
+
+2. **Manual Pipeline** (`main --timing` + `full_analysis.py`): Two-stage process where C++ collects timing data, then Python performs offline analysis with full control over parameters.
+
+**Platform Support:** x86_64, ARMv8 (AArch64), POWER9/10
+
+**Core Techniques:**
+- Timing-based row buffer conflict detection
+- GF(2) nullspace analysis for mask discovery
+- Minimal-weight basis optimization
+- Automated threshold detection using histogram analysis
+
+## Installation
+
+### 1. Build
 ```bash
-make clean && make
-
-# 1. Run the automated C++ pipeline (threshold + bank/row discovery)
-sudo ./obj/tester --full-analysis -p 5 -n 50000 -r 50
-
-# (Optional) 2. Collect a CSV for offline analysis
-sudo ./obj/tester -a -p 5 -n 50000 -r 50
-
-# (Optional) 3. Re-run the analysis in Python for additional reporting
-python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --verbose
-
-# 3. For high-precision analysis
-python3 full_analysis.py data/<hostname>_<size_in_mb>.csv --thresh 150 --subsample 2000 --repeat 100
+make
 ```
+This produces `main` (automatic pipeline) and supporting components.
 
-## Building and Running
-
-### System Requirements
-- Linux host with root privileges (required for `/proc/self/pagemap` access and PMU control)
-- GCC with C++11 support and `make`
-- Supported CPU architectures: x86_64, ARMv8, or ppc64le (POWER9/POWER10)
-- Optional: Python 3.7+ for offline `full_analysis.py`
-
-### Performance Counter Setup (ARMv8 only)
-**Note**: The performance counter kernel module is only required for ARMv8 devices. On x86_64 systems, the program will work without additional setup.
-
-**For ARMv8 devices only**: Install the kernel module provided in the `enable_arm_pmu/` directory:
-
+### 2. ARM64 PMU Setup (ARM platforms only)
 ```bash
 cd enable_arm_pmu
 make
 sudo ./load-module
 ```
 
-### Compilation
+### 3. Python Dependencies (for manual pipeline only)
 ```bash
-# Build the project
-make clean && make
-
-# The binary will be created as obj/tester
-```
-
-
-
-### Python Analysis Requirements
-
-The offline analyser mirrors the automated C++ stages and relies on the following packages:
-
-#### Option 1: Using Portable Virtual Environment (Recommended)
-A portable Python virtual environment is provided in the repository for easy setup:
-
-```bash
-# Set up the Python virtual environment (one-time setup)
-./setup_python_env.sh
-
-# Activate the virtual environment
+./setup_python_env.sh           # Automated setup
 source venv/bin/activate
 
-# Run analysis (virtual environment active)
-python full_analysis.py access_module_1024.csv --thresh 150
-
-# Deactivate when done
-deactivate
-```
-
-#### Option 2: Manual Installation
-If you prefer to install dependencies manually:
-
-```bash
-# Install Python dependencies
-pip3 install --user numpy pandas matplotlib galois scipy
-
-# Verify installation
-python3 -c "import numpy, pandas, matplotlib, galois, scipy; print('All dependencies installed successfully')"
-```
-
-#### Required Python Packages
-- **Python 3.7+**: Base interpreter
-- **NumPy**: Numerical computing and matrix operations
-- **Pandas**: Data manipulation and CSV processing  
-- **Matplotlib**: Optional plotting support for threshold diagnostics
-- **galois**: GF(2) linear algebra backend used for mask extraction
-- **SciPy**: Supplemental scientific routines (smoothing, statistics)
-
-#### Dependency Check
-To verify your Python environment is ready:
-
-```bash
-# Quick dependency check
+# Or install manually:
+pip3 install numpy pandas matplotlib galois scipy
 python3 check_python_deps.py
-
-# Should output all green checkmarks for required packages
 ```
 
-### Usage
-```bash
-# Basic usage (requires root for pagemap access)
-sudo ./obj/tester
+---
 
-# Specify memory size (25GB default)
-sudo ./obj/tester -m 8192  # Use 8GB
+## Workflow 1: Automatic Pipeline (Recommended)
 
-# Use percentage of total memory
-sudo ./obj/tester -p 50    # Use 50% of system memory
-
-# Run bitflip analysis instead of timing measurement
-sudo ./obj/tester --bitflip
-
-# Customize number of measurements and rounds
-sudo ./obj/tester -n 50000 -r 100
-
-# Specify output file
-sudo ./obj/tester -o custom_output.csv
-
-# Auto-generate filename based on hostname and memory size
-sudo ./obj/tester -a  # Creates <hostname>_<size_in_mb>.csv
-```
-
-### Command-Line Options
-- `-h`: Show help message
-- `-m <size_mb>`: Memory size in MB (default: 25600)
-- `-p <percentage>`: Memory size as percentage of total system memory
-- `-r <rounds>`: Number of timing measurement rounds (default: 50)
-- `-n <measurements>`: Number of measurements to perform (default: 100000)
-- `-o <file>`: Output file for results (default: output.csv)
-- `-a`: Auto-generate output filename as `<hostname>_<size_in_mb>.csv`
-- `--timing`: Run timing measurement mode (default)
-- `--bitflip`: Run bitflip probing analysis
-- `--full-analysis`: Execute the end-to-end automated pipeline (threshold detection → bank masks → row masks) and print discovered masks directly on the console
-- `-v`: Verbose output
-
-Typical parameter choices:
-- `-p 5` tells the tool to allocate 5 % of the available DRAM. Use smaller percentages for quick scans or larger percentages for higher fidelity.
-- `-n 50000` controls how many address pairs are sampled per round; more samples improve confidence at the cost of runtime.
-- `-r 50` sets how many times each tuple is measured; increase this if you need tighter timing distributions.
-
-**Note**: The `-o` and `-a` options are mutually exclusive. Use `-o` to specify a custom filename or `-a` to auto-generate based on hostname and memory size.
-
-## Output Files
-
-The tool generates CSV files containing timing measurements and address mappings. Output filenames depend on the options used:
-
-### Filename Formats
-- **Default**: `access_module_<size_in_mb>.csv` (e.g., `access_module_1024.csv`)
-- **Custom**: Specified with `-o` option (e.g., `custom_output.csv`)
-- **Auto-generated**: `<hostname>_<size_in_mb>.csv` when using `-a` option (e.g., `myserver_1024.csv`)
-
-### Timing Measurement Output (`access_module_<size>.csv`)
-```
-a1,a2,elapsed_cycles,v_a1,v_a2
-1a2b3c4d,5e6f7890,234,7f8e9d0c,1b2a3948
-...
-```
-- `a1`, `a2`: Physical addresses (hexadecimal)
-- `elapsed_cycles`: Measured access time in CPU cycles
-- `v_a1`, `v_a2`: Virtual addresses (hexadecimal)
-
-### Bitflip Analysis Output (`bitflip_probe_<size>.csv`)
-```
-anchor_va,a1,delta,probe_va,a2,elapsed_cycles
-deadbeef,12345678,00000400,cafebabe,12341278,156
-...
-```
-- `anchor_va`, `probe_va`: Virtual addresses
-- `a1`, `a2`: Physical addresses
-- `delta`: XOR difference applied
-- `elapsed_cycles`: Measured timing
-
-## Architecture Support
-
-### ARM64 (AArch64)
-- Uses `DC CIVAC` for cache line eviction
-- Employs `PMCCNTR_EL0` performance counter for high-precision timing
-- Includes anti-speculation techniques with memory barriers
-
-### x86/x86_64
-- Uses `clflush` instruction for cache eviction
-- Employs `rdtsc` instruction for timing measurements
-- Includes appropriate memory fences and barriers
-
-### POWER (ppc64le)
-- Uses `dcbf` to flush cache lines and `sync/isync` barriers for ordering
-- Employs the time-base register for cycle counting on POWER9/POWER10 parts
-- Shares the same anti-speculation pattern as the ARM implementation to eliminate OoO noise
-
-## Features
-
-### Data Generation (C++)
-- **Timing Measurements**: Perform precise memory access timing analysis using hardware performance counters
-- **Bitflip Probing**: Optional memory mapping analysis through controlled bit manipulation
-- **Flexible Memory Allocation**: Support for both fixed memory sizes and percentage-based allocation
-make
-```
-
-The executable will be created as `obj/tester`.
-
-## Usage
-
-### How the Program Works
-
-The program performs memory analysis through two main operations:
-
-1. **Timing Measurements** (Default): Analyzes memory access patterns by measuring timing differences between memory accesses to different physical addresses.
-2. **Bitflip Probing** (Optional): Performs controlled bit manipulation to analyze memory mapping and identify relationships between virtual and physical addresses.
-
-### Running the Program
-
-The program must be run with root privileges to access system memory information and performance counters.
-
-#### Basic Workflow:
-1. **Build the program** (one-time setup)
-2. **Install ARM PMU module** (ARMv8 only, one-time setup)
-3. **Run measurements** with desired parameters
-4. **Analyze output** CSV files
-
-### Command Line Usage
+The automatic pipeline runs all three stages in C++ with a single command. It performs threshold detection, bank mask inference, and row mask derivation automatically.
 
 ### Basic Usage
 ```bash
-sudo ./obj/tester [OPTIONS]
+sudo ./main --full-analysis -p 50
 ```
 
-### Command Line Options
+This runs the complete analysis using 50% of system memory.
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-h` | Show help message | - |
-| `-o <file>` | Output file for memory profiling | `output.csv` |
-| `-m <size_mb>` | Memory size in MB | `25600` (25GB) |
-| `-p <percent>` | Memory size as percentage of total (overrides `-m`) | - |
-| `-r <rounds>` | Number of rounds | `50` |
-| `-n <measurements>` | Number of measurements | `100000` |
-| `--timing` | Run timing measurement instead of rev_mc | - |
-| `--bitflip` | Run mapping bitflip probe | - |
-| `-v` | Verbose output | - |
+### Pipeline Stages
+
+**Stage 1: Threshold Detection**
+- Collects random memory access latencies
+- Builds histogram and applies smoothing
+- Uses "Find the Bump's Left Foot" heuristic to separate hits from conflicts
+- Outputs: `latencies.dat`, `smoothed_histogram.dat`, `analysis_points.dat`
+
+**Stage 2: Bank Mask Discovery**
+- Collects conflict samples (same-bank pairs)
+- Performs GF(2) nullspace analysis with subsampling
+- Finds minimal-weight basis of candidate masks
+- Evaluates accuracy with confusion matrix
+
+**Stage 3: Row Mask Derivation**
+- Collects same-bank pairs with known timing behavior
+- Applies invariance filtering (bits constant in hits, varying in conflicts)
+- Derives row masks from bank mask nullspace
+- Validates against collected samples
+
+### Automatic Pipeline Parameters
+
+#### Memory Configuration
+- `-m <MB>`: Memory size in megabytes (default: 25600 MB / 25 GB)
+- `-p <percent>`: Portion of system DRAM to allocate (overrides `-m`)
+- `-d, --delay <us>`: Inter-pair delay in microseconds to avoid tFAW violations (default: 0)
+
+#### Stage 1: Threshold Detection Options
+- `--threshold <cycles>`: Manually set threshold, skip auto-detection (default: auto)
+  - Example: `--threshold 260`
+- `--threshold-samples <n>`: Samples for histogram (default: 100000)
+  - Example: `--threshold-samples 200000`
+
+#### Stage 2: Bank Mask Detection Options
+- `--bank-conflicts <n>`: Target conflict samples (default: 5000)
+- `--bank-measurements <n>`: Max measurements (default: 3000000)
+- `--bank-subsample <n>`: Subsample size for nullspace (default: 1000)
+- `--bank-rounds <n>`: Subsampling iterations (default: 35)
+- `--bank-attempts <n>`: Max retry attempts (default: 3)
+
+#### Stage 3: Row Mask Detection Options
+- `--row-pairs <n>`: Target same-bank pairs (default: 8000)
+- `--row-min-hits <n>`: Minimum hit samples (default: 1000)
+- `--row-min-conflicts <n>`: Minimum conflict samples (default: 1000)
+- `--row-max-attempts <n>`: Max sampling attempts (default: 2400000)
+
+#### Other Options
+- `-v`: Verbose output
+- `-d, --delay <us>`: Delay between measurements (µs) for tFAW mitigation (default: 0)
+- `--force-multiple-rounds`: Force multiple rounds for validation
 
 ### Examples
 
-#### Step-by-Step: First Run
-1. **Build the program:**
-   ```bash
-   make clean && make
-   ```
-
-2. **For ARMv8 systems only - Install PMU module:**
-   ```bash
-   make
-   sudo ./load-module
-   cd ..
-   ```
-
-3. **Run basic timing measurement:**
-   ```bash
-   sudo ./obj/tester
-   ```
-   This uses default settings: 25GB memory, 50 rounds, 100,000 measurements
-
-4. **Check output:**
-   ```bash
-   ls -la access_module_*.csv
-   ```
-
-### Memory Size Configuration
-
-**Use percentage of total memory (recommended):**
+#### Basic Run
 ```bash
-# Use 10% of total system memory
-sudo ./obj/tester -p 10
-
-# Use 1% for quick testing
-sudo ./obj/tester -p 1
+sudo ./main --full-analysis -p 25
 ```
 
-**Use fixed memory size:**
+#### High Precision
 ```bash
-# Use 1GB of memory
-sudo ./obj/tester -m 1024
-
-# Use 512MB of memory
-sudo ./obj/tester -m 512
+sudo ./main --full-analysis -p 50 \
+  --bank-conflicts 10000 --bank-rounds 60 --row-pairs 15000
 ```
 
-### Performance Tuning
-
-**Quick test run:**
+#### Manual Threshold (Skip Stage 1)
 ```bash
-sudo ./obj/tester -p 1 -r 5 -n 1000
+sudo ./main --full-analysis --threshold 260 -p 25
 ```
 
-**High-precision measurement:**
+#### Difficult/Noisy Systems
 ```bash
-sudo ./obj/tester -p 20 -r 100 -n 500000
+sudo ./main --full-analysis -p 50 \
+  --threshold-samples 200000 \
+  --bank-conflicts 15000 --bank-subsample 2000 --bank-rounds 80 \
+  --row-pairs 20000 --row-min-hits 3000
 ```
 
-### Advanced Usage
-
-**Run bitflip analysis:**
+#### With tFAW Mitigation
 ```bash
-sudo ./obj/tester -p 5 --bitflip
+sudo ./main --full-analysis -p 50 --delay 10
 ```
 
-**Custom output file:**
-```bash
-sudo ./obj/tester -p 10 -o my_experiment.csv
-```
+### Output Files
+- `latencies.dat`: Raw latency samples for threshold analysis
+- `smoothed_histogram.dat`: Histogram with smoothing applied
+- `analysis_points.dat`: Auto-detected threshold, peaks, confidence score
+- `threshold_analysis_summary.txt`: Detailed threshold detection report
 
-**Verbose output for debugging:**
-```bash
-sudo ./obj/tester -p 1 -n 100 -v
-```
+---
 
-## Analysis
+## Workflow 2: Manual Pipeline (Python Analytics)
 
-### Prerequisites Check
-Before running analysis, verify your Python environment:
+The manual pipeline separates data collection (C++) from analysis (Python), giving you full control over the analysis parameters and allowing iterative experimentation.
 
-```bash
-# Check all dependencies are installed
-python3 check_python_deps.py
+### Step 1: Collect Timing Data (C++)
 
-# If using virtual environment
-source venv/bin/activate
-python check_python_deps.py
-```
-
-### Running the Analysis Tool
-
-After collecting timing data with the data generation tool, use the Python analysis script to extract memory patterns:
+Use the legacy timing measurement mode to generate CSV files:
 
 ```bash
-# If using virtual environment
-source venv/bin/activate
-
-# Run analysis
-python3 full_analysis.py <csv_file> --thresh <threshold> [OPTIONS]
+sudo ./main --timing -a -p 50 -n 100000 -r 50
 ```
 
-### Analysis Command Line Options
+#### Data Collection Parameters
+- `-a`: Auto-name output as `data/<hostname>_<mem>.csv`
+- `-o <file>`: Specify custom output file
+- `-p <percent>`: Memory allocation (% of system RAM)
+- `-m <MB>`: Memory allocation (absolute MB, overridden by `-p`)
+- `-n <count>`: Number of address pairs to measure (default: 100000)
+- `-r <rounds>`: Timing rounds per pair for median calculation (default: 50)
+- `-d <us>`: Inter-measurement delay in microseconds
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `csv_file` | Path to CSV file generated by data collection tool | Required |
-| `--thresh <cycles>` | Threshold latency separating conflicts from non-conflicts | Required |
-| `--subsample <size>` | Subsample size for nullspace analysis | `1000` |
-| `--repeat <count>` | Number of repetitions for subsampling | `50` |
-| `--limit <count>` | Limit number of pairs to process (for testing) | None |
-| `--verbose`, `-v` | Enable verbose output | False |
+#### Alternative: Bitflip Probe Mode
+```bash
+sudo ./main --bitflip -p 50 -r 50
+```
+Systematically flips bits in physical addresses to probe bank mapping functions.
+
+### Step 2: Analyze with Python
+
+```bash
+python3 full_analysis.py data/<hostname>_<mem>.csv --thresh <value> [options]
+```
+
+#### Required Parameter
+- `--thresh <cycles>`: Latency threshold separating hits from conflicts
+  - Determine this by examining the timing distribution
+  - Typical values: 150-300 cycles depending on system
+
+#### Analysis Parameters
+- `--subsample <n>`: Subsample size for GF(2) nullspace (default: 1000)
+  - Controls memory usage and convergence speed
+  - Larger = slower but potentially more accurate
+  
+- `--repeat <n>`: Number of subsampling rounds (default: 50)
+  - More rounds = better mask frequency statistics
+  - Increase for difficult systems (60-100)
+
+- `--sensitivity <float>`: Sensitivity for row bit analysis (default: 0.05)
+  - Range: 0.0 to 1.0
+  - Lower = stricter filtering
+
+- `--limit <n>`: Limit pairs processed (for testing)
+  - Useful for quick validation runs
+
+- `--verbose, -v`: Detailed progress output
+
+#### Python Pipeline Output
+The script performs:
+1. **Data loading** with consistency filtering
+2. **Binary difference matrix** construction
+3. **GF(2) nullspace analysis** with subsampling
+4. **Minimal-weight basis** optimization
+5. **Accuracy evaluation** (precision, recall, F1 score)
+6. **Bank-separated timing** analysis
+7. **Row buffer analysis** with invariant detection
+
+### Visualization
+
+After either workflow, visualize threshold detection:
+
+```bash
+python3 plot_histogram.py [--interactive] [--save output.png]
+```
+
+Options:
+- `--interactive`: Click to select manual threshold
+- `--save <file>`: Save plot instead of displaying
+
+### CSV Output Format
+```csv
+a1,a2,elapsed_cycles,v_a1,v_a2
+1a2b3c4d,5e6f7890,234,7f8e9d0c,1b2a3948
+```
+- `a1`, `a2`: Physical addresses (hex)
+- `elapsed_cycles`: Access latency in CPU cycles
+- `v_a1`, `v_a2`: Virtual addresses (hex)
+
+---
+
+## Platform-Specific Implementation
+
+### x86/x86_64
+- **Cache eviction:** `clflush` instruction
+- **Timing:** `rdtsc`/`rdtscp` timestamp counter
+- **Barriers:** `mfence`, `lfence`
+
+### ARM64 (AArch64)
+- **Cache eviction:** `DC CIVAC` (clean & invalidate)
+- **Timing:** `PMCCNTR_EL0` cycle counter (requires PMU kernel module)
+- **Barriers:** `DSB`, `ISB`
+- **Anti-speculation:** Dependency chains to prevent speculative loads
+
+### POWER (ppc64le)
+- **Cache eviction:** `dcbf` (data cache block flush)
+- **Timing:** Time-base register
+- **Barriers:** `sync`, `isync`
+
+---
+
+## Troubleshooting
+
+### Automatic Pipeline
+
+**Bank masks fail to converge:**
+- Increase conflict samples: `--bank-conflicts 10000`
+- More subsampling rounds: `--bank-rounds 80`
+- Larger subsample: `--bank-subsample 2000`
+- Verify threshold: `python3 plot_histogram.py`
+
+**Row masks not found:**
+- Increase same-bank pairs: `--row-pairs 15000`
+- Raise minimums: `--row-min-hits 2000`
+- More attempts: `--row-max-attempts 3000000`
+
+**Threshold detection fails:**
+- Manual threshold: `--threshold <value>`
+- More samples: `--threshold-samples 200000`
+- Visualize distribution: `python3 plot_histogram.py`
+
+### Manual Pipeline
+
+**Determining threshold:**
+1. Generate histogram: `python3 plot_histogram.py --interactive`
+2. Look for the "left foot" where high-latency bump begins
+3. Choose value in the valley between two modes
+
+**Low accuracy (<70%):**
+- Verify threshold is correct
+- Increase Python analysis rounds: `--repeat 100`
+- Larger subsample: `--subsample 2000`
+- Collect more data with longer C++ runs
+
+**Python analysis tips:**
+- Start with `--verbose` to see detailed progress
+- Use `--limit 50000` for quick testing
+- Increase `--repeat` if masks are inconsistent
+- Check consistency filtering output
+
+### General Issues
+
+**System-specific:**
+- High contention: Add `--delay 10`
+- Noisy timings: Double all sample counts
+- Slow systems: Reduce memory `-p 10`
+- Ensure system is idle during measurements
+
+## Requirements
+- Linux with root access (for `/proc/self/pagemap` and PMU control)
+- GCC with C++11 support, GNU make
+- Python 3.8+ (optional, for analytics)
+
+## Contributing
+Issues and PRs welcome. Please document your hardware platform, kernel version, and parameter configuration. Keep patches focused and well-tested.
+
+## Citation
+If you use this tool in your research, please cite the Knock-Knock paper and let us know about your findings.
+```
+@misc{plin2025knockknock,
+      title={Knock-Knock: Black-Box, Platform-Agnostic DRAM Address-Mapping Reverse Engineering}, 
+      author={Antoine Plin and Lorenzo Casalino and Thomas Rokicki and Ruben Salvador},
+      year={2025},
+      eprint={2509.19568},
+      archivePrefix={arXiv},
+      primaryClass={cs.CR},
+      url={https://arxiv.org/abs/2509.19568}, 
+}
+```

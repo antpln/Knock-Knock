@@ -16,6 +16,7 @@ struct ThresholdDetectionResult {
     bool used_fallback;
     bool threshold_valid;
     double separation_ratio;
+    double confidence;
     std::string fallback_reason;
     std::vector<int> histogram;
     std::vector<double> smoothed_histogram;

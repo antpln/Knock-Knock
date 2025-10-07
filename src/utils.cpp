@@ -26,7 +26,7 @@
 // 			Memory allocation functions
 
 /**
- * @brief Fisher–Yates shuffle algorithm for randomizing page order
+ * @brief Fisher-Yates shuffle algorithm for randomizing page order
  * 
  * Randomly shuffles an array of page indices to ensure pages are faulted
  * in random order, promoting scattered physical page allocation.
@@ -82,7 +82,7 @@ int alloc_buffer(mem_buff_t *mem)
         perror("[WARN] madvise(MADV_NOHUGEPAGE)");
 
     /* 3. Fault pages in *random order* so buddy allocator
-          pulls from many free lists → scattered PFNs for better analysis. */
+          pulls from many free lists -> scattered PFNs for better analysis. */
     const size_t npages = mem->size / KB(4);
     size_t *order = (size_t *)malloc(npages * sizeof(size_t));
     if (!order) { perror("malloc"); return -1; }
@@ -95,7 +95,7 @@ int alloc_buffer(mem_buff_t *mem)
     // Fault pages in random order to scatter physical addresses
     for (size_t k = 0; k < npages; ++k) {
         volatile char *p = mem->buffer + order[k] * KB(4);
-        *p = 0;                        /* one write ⇒ one page-fault */
+        *p = 0;                        /* one write => one page-fault */
     }
     free(order);
 

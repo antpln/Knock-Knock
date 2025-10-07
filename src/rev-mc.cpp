@@ -62,7 +62,7 @@ uint64_t measure_one_block_access_time(volatile void* p1, volatile void* p2)
         asm volatile("nop" ::: "memory");
     }
 
-    // Create a fake dependency on val, but don’t change the address
+    // Create a fake dependency on val, but don't change the address
     // this allows to avoid speculative load of p2
     uintptr_t safe_ptr;
     asm volatile(
@@ -93,32 +93,32 @@ uint64_t measure_one_block_access_time(volatile void* p1, volatile void* p2)
     asm volatile("dcbf 0,%0" :: "r"(p1) : "memory");
     asm volatile("dcbf 0,%0" :: "r"(p2) : "memory");
 
-    /* 2.  Make the write‑backs globally visible */
-    asm volatile("sync");            /* full‑barrier for all threads */
+    /* 2.  Make the write-backs globally visible */
+    asm volatile("sync");            /* full-barrier for all threads */
 
     /* 3.  Give the cache machinery a couple of cycles */
     asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
 
-    /* 4.  Touch p1 so its row is open (RowHammer‑style pattern) */
+    /* 4.  Touch p1 so its row is open (RowHammer-style pattern) */
     volatile char val = *(volatile char *)p1;
 
-    /* 5.  Prevent OoO speculation from pulling‑in p2 early      */
-    if (val == 0xAB)                 /* dummy data‑dependent branch */
+    /* 5.  Prevent OoO speculation from pulling-in p2 early      */
+    if (val == 0xAB)                 /* dummy data-dependent branch */
         asm volatile("nop" ::: "memory");
 
     asm volatile("nop; nop; nop; nop; nop; nop; nop; nop; nop; nop");
 
-    /* 6‑7.  Time the access to p2 ********************************/
+    /* 6-7.  Time the access to p2 ********************************/
 
     asm volatile("sync");            /* drain prior writes/reads   */
     asm volatile("isync");           /* serialise the pipeline     */
-    t0 = __builtin_ppc_get_timebase();   /* TIME‑START (64‑bit)   */
+    t0 = __builtin_ppc_get_timebase();   /* TIME-START (64-bit)   */
 
     val = *(volatile char *)p2;     /*   >>> load p2 <<<     */
 
     asm volatile("sync");
     asm volatile("isync");
-    t1 = __builtin_ppc_get_timebase();   /* TIME‑END              */
+    t1 = __builtin_ppc_get_timebase();   /* TIME-END              */
 
     return t1 - t0;
 
@@ -250,7 +250,7 @@ uint64_t get_phys_addr(uint64_t v_addr)
     assert(n == 8);
     assert(entry & (1ULL << 63));                    /* page present    */
 
-    uint64_t pfn = entry & ((1ULL<<55) - 1);         /* bits 0‑54       */
+    uint64_t pfn = entry & ((1ULL<<55) - 1);         /* bits 0-54       */
     assert(pfn != 0 && "need CAP_SYS_ADMIN or root");/* may still trip  */
 
     return (pfn << page_shift) | (v_addr & (page_sz - 1));
@@ -273,7 +273,7 @@ void *pa_to_va(uint64_t pa, pfn_va_t *map, size_t n)
     uint64_t pfn = pa >> 12;     // Extract PFN from physical address
     uint64_t off = pa & 0xFFF;   // Extract page offset
 
-    /* Linear search is fine for ≤ a few thousand pages */
+    /* Linear search is fine for <= a few thousand pages */
     for (size_t i = 0; i < n; ++i)
         if (map[i].pfn == pfn)
             return (void *)(map[i].va + off);
@@ -490,12 +490,12 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
 
     // Test each anchor address
     for (int a_idx = 0; a_idx < num_anchors; a_idx++) {
-        // 1️⃣ Pick an anchor address at random
+        // Step 1: pick an anchor address at random.
         char *anchor_va = get_rnd_addr(mem.buffer, mem.size);
         uint64_t anchor_pa = get_phys_addr((uint64_t)anchor_va);
         printf("[anchor %d/%d] VA=%p PA=0x%lx\n", a_idx+1, num_anchors, anchor_va, anchor_pa);
 
-        // 2️⃣ Test single-bit flips and combinations with bit 10
+        // Step 2: test single-bit flips and bit-10 combinations.
         for (int b = 0; b < 33; b++) {
             int i = bank_bits[b];
             
@@ -526,7 +526,7 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
             }
         }
 
-        // 3️⃣ Test two-bit flips and their combinations with bit 10
+        // Step 3: test two-bit flips and bit-10 combinations.
         for (int bi = 0; bi < 33; bi++) {
             for (int bj = 0; bj < bi; bj++) {
                 // Two-bit flip pattern

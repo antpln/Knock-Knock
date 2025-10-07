@@ -5,9 +5,6 @@ Memory Controller Analysis Tool
 This script analyzes timing measurement data from memory access patterns to identify
 DRAM bank conflict patterns and row buffer behavior. It uses Galois field (GF(2))
 linear algebra to find bit masks that predict memory access conflicts.
-
-Author: [Author name]
-Date: July 2025
 """
 
 import argparse
@@ -43,9 +40,7 @@ def parity(arr):
             if arr.size else
             np.zeros(arr.shape[0], np.uint8))
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Command Line Interface
-# ════════════════════════════════════════════════════════════════════════════════
 
 def parse_arguments():
     """Parse and validate command-line arguments."""
@@ -99,9 +94,7 @@ SENSITIVITY = args.sensitivity
 LIMIT = args.limit
 VERBOSE = args.verbose
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Data Loading and Preprocessing
-# ════════════════════════════════════════════════════════════════════════════════
 
 def load_and_preprocess_data():
     """Load CSV data and perform initial preprocessing."""
@@ -258,9 +251,7 @@ if N - conflict_count == 0:
     print("[ERROR] Error: No non-conflict pairs found! Check your threshold value.")
     sys.exit(1)
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Binary Difference Matrix Construction
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_section("Building Binary Difference Matrix")
 
@@ -281,7 +272,7 @@ nonzero_cols = np.flatnonzero(diffs_bits.any(axis=0))
 diffs_bits = diffs_bits[:, nonzero_cols]
 
 print(f"[SUCCESS] Binary difference matrix constructed:")
-print(f"   Matrix shape: {diffs_bits.shape[0]:,} × {diffs_bits.shape[1]}")
+print(f"   Matrix shape: {diffs_bits.shape[0]:,} x {diffs_bits.shape[1]}")
 print(f"   Non-zero columns: {len(nonzero_cols)} / 64")
 print(f"   Bit positions with differences: {list(nonzero_cols)}")
 
@@ -294,9 +285,7 @@ a2_bits = np.unpackbits(a2.view(np.uint8).reshape(-1, 8),
 
 print("[SUCCESS] Bit decompositions ready for analysis")
 
-# ════════════════════════════════════════════════════════════════════════════════
 # GF(2) Nullspace Analysis for Bank Mask Discovery
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_section("GF(2) Nullspace Analysis")
 
@@ -313,14 +302,14 @@ print(f"[INFO] Starting subsampling analysis...")
 print(f"   Subsample size: {SUBSAMPLE}")
 print(f"   Number of repetitions: {REPEAT}")
 
-# We ONLY want rows that are *conflicts* (equation m·d = 0)
+# We ONLY want rows that are *conflicts* (equation m.d = 0)
 rows_conflict = np.nonzero(conf == 1)[0]
 conflict_count = len(rows_conflict)
 
 print(f"   Conflict rows available: {conflict_count:,}")
 
 if conflict_count == 0:
-    print("[ERROR] Error: No conflict rows found → nothing to solve!")
+    print("[ERROR] Error: No conflict rows found -> nothing to solve!")
     sys.exit(1)
 
 if conflict_count < SUBSAMPLE:
@@ -340,7 +329,7 @@ for r in range(REPEAT):
     print(f"   Round {r+1:3d}/{REPEAT}: ", end="", flush=True)
     
     try:
-        # Draw without replacement; fall back to all if sample size ≥ population
+        # Draw without replacement; fall back to all if sample size >= population
         idx = np.random.choice(rows_conflict,
                               size=min(actual_subsample, len(rows_conflict)),
                               replace=False)
@@ -377,9 +366,7 @@ if len(mask_counter) == 0:
     print("[ERROR] Error: No masks found! Try adjusting the threshold or increasing subsample size.")
     sys.exit(1)
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Mask Collection and Linear Independence Analysis
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_section("Mask Analysis and Optimization")
 
@@ -397,7 +384,7 @@ if VERBOSE:
         m_val = np.packbits(m, bitorder="little").view(np.uint64)[0]
         frequency = mask_counter[tuple(m)]
         set_bits = [j for j, b in enumerate(m) if b == 1]
-        print(f"   {i:2d}: {m_val:#018x} (seen {frequency:3d}×, weight: {len(set_bits)}, bits: {set_bits})")
+        print(f"   {i:2d}: {m_val:#018x} (seen {frequency:3d}x, weight: {len(set_bits)}, bits: {set_bits})")
     if k > 10:
         print(f"   ... and {k-10} more masks")
 else:
@@ -430,7 +417,7 @@ def remove_linear_combinations(masks, target_dimension=None):
     masks : list[int | np.ndarray]
         Row-mask candidates as 64-bit ints *or* 64-element 0/1 arrays.
     target_dimension : int | None
-        Optional – stop once this many independent masks are kept.
+        Optional - stop once this many independent masks are kept.
 
     Returns
     -------
@@ -478,8 +465,8 @@ def remove_linear_combinations(masks, target_dimension=None):
 
 def minimal_hamming_weight_basis(masks):
     """
-    Return the lowest‑weight linearly‑independent subset of `masks`.
-    Each mask is a length‑64 0/1 NumPy array.
+    Return the lowest-weight linearly-independent subset of `masks`.
+    Each mask is a length-64 0/1 NumPy array.
     """
     # Sort once by individual Hamming weight
     masks_sorted = sorted(masks, key=lambda m: int(m.sum()))
@@ -525,11 +512,9 @@ if VERBOSE:
         m_val = np.packbits(m, bitorder="little").view(np.uint64)[0]
         frequency = mask_counter[tuple(m)]
         set_bits = [j for j, b in enumerate(m) if b == 1]
-        print(f"   {i:2d}: {m_val:#018x} (seen {frequency:3d}×, weight: {len(set_bits)}, bits: {set_bits})")
+        print(f"   {i:2d}: {m_val:#018x} (seen {frequency:3d}x, weight: {len(set_bits)}, bits: {set_bits})")
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Accuracy Evaluation and Performance Metrics
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_section("Performance Evaluation")
 
@@ -640,9 +625,7 @@ def display_bank_masks(masks, title="Bank Masks"):
 
 display_bank_masks(found_masks, title="Final Bank Conflict Masks")
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Bank-Separated Timing Analysis
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_section("Bank-Separated Timing Distribution")
 
@@ -670,11 +653,11 @@ diff_bank_high = [c for c in diff_bank_cycles if c > THRESH]
 
 print(f"\n[ANALYSIS] Detailed timing statistics:")
 print(f"   Same Bank Pairs ({len(same_bank_cycles):,} total):")
-print(f"     Low latency (≤{THRESH}):  {len(same_bank_low):,} ({len(same_bank_low)/len(same_bank_cycles)*100:.1f}%)")
+print(f"     Low latency (<={THRESH}):  {len(same_bank_low):,} ({len(same_bank_low)/len(same_bank_cycles)*100:.1f}%)")
 print(f"     High latency (>{THRESH}): {len(same_bank_high):,} ({len(same_bank_high)/len(same_bank_cycles)*100:.1f}%)")
 
 print(f"   Different Bank Pairs ({len(diff_bank_cycles):,} total):")
-print(f"     Low latency (≤{THRESH}):  {len(diff_bank_low):,} ({len(diff_bank_low)/len(diff_bank_cycles)*100:.1f}%)")
+print(f"     Low latency (<={THRESH}):  {len(diff_bank_low):,} ({len(diff_bank_low)/len(diff_bank_cycles)*100:.1f}%)")
 print(f"     High latency (>{THRESH}): {len(diff_bank_high):,} ({len(diff_bank_high)/len(diff_bank_cycles)*100:.1f}%)")
 
 if same_bank_cycles and diff_bank_cycles:
@@ -682,9 +665,7 @@ if same_bank_cycles and diff_bank_cycles:
     print(f"   Same bank - mean: {np.mean(same_bank_cycles):.1f}, std: {np.std(same_bank_cycles):.1f}")
     print(f"   Diff bank - mean: {np.mean(diff_bank_cycles):.1f}, std: {np.std(diff_bank_cycles):.1f}")
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Row Buffer Analysis
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_section("Row Buffer Analysis (Strict Invariant Method)")
 
@@ -781,29 +762,27 @@ else:
         except Exception as e:
             print(f"[ERROR] Error in row analysis: {e}")
 
-# ════════════════════════════════════════════════════════════════════════════════
 # Analysis Summary and Conclusion
-# ════════════════════════════════════════════════════════════════════════════════
 
 print_header("ANALYSIS SUMMARY")
 
 print("[RESULT] Key Findings:")
-print(f"   • Dataset: {N:,} address pairs analyzed")
-print(f"   • Conflict threshold: {THRESH} cycles") 
-print(f"   • Bank masks discovered: {len(found_masks)}")
-print(f"   • Overall accuracy: {accuracy:.2f}%")
-print(f"   • Precision: {precision:.2f}%")
-print(f"   • Recall: {recall:.2f}%")
+print(f"   - Dataset: {N:,} address pairs analyzed")
+print(f"   - Conflict threshold: {THRESH} cycles") 
+print(f"   - Bank masks discovered: {len(found_masks)}")
+print(f"   - Overall accuracy: {accuracy:.2f}%")
+print(f"   - Precision: {precision:.2f}%")
+print(f"   - Recall: {recall:.2f}%")
 
 if len(found_masks) > 0:
     total_bits = sum(np.sum(m) for m in found_masks)
-    print(f"   • Total mask complexity: {total_bits} bits across {len(found_masks)} masks")
+    print(f"   - Total mask complexity: {total_bits} bits across {len(found_masks)} masks")
     
     # Show the most significant mask
     best_mask = found_masks[0]  # First mask (highest frequency)
     best_mask_val = np.packbits(best_mask, bitorder="little").view(np.uint64)[0]
     best_mask_bits = [i for i, b in enumerate(best_mask) if b == 1]
-    print(f"   • Primary mask: {best_mask_val:#018x} (bits: {best_mask_bits})")
+    print(f"   - Primary mask: {best_mask_val:#018x} (bits: {best_mask_bits})")
 
 print(f"\n[FILE] Analysis completed successfully!")
 print(f"   Input file: {CSV}")
