@@ -8,7 +8,7 @@ Preprint available at https://arxiv.org/abs/2509.19568
 
 Knock-Knock provides two workflows for DRAM reverse engineering:
 
-1. **Automatic Pipeline** (`main --full-analysis`): Complete C++ implementation that automatically detects thresholds, discovers bank masks, and derives row masks in one run.
+1. **Automatic Pipeline** (`main --full-analysis`): Complete C++ implementation that automatically detects thresholds, discovers bank masks, and derives row masks in one run. (Disclaimer : the automatic threshold detection might not always be accurate. In case of issues, please double-check by using plot_histogram.py)
 
 2. **Manual Pipeline** (`main --timing` + `full_analysis.py`): Two-stage process where C++ collects timing data, then Python performs offline analysis with full control over parameters.
 
@@ -315,13 +315,15 @@ Issues and PRs welcome. Please document your hardware platform, kernel version, 
 ## Citation
 If you use this tool in your research, please cite the Knock-Knock paper and let us know about your findings.
 ```
-@misc{plin2025knockknock,
-      title={Knock-Knock: Black-Box, Platform-Agnostic DRAM Address-Mapping Reverse Engineering}, 
-      author={Antoine Plin and Lorenzo Casalino and Thomas Rokicki and Ruben Salvador},
-      year={2025},
-      eprint={2509.19568},
-      archivePrefix={arXiv},
-      primaryClass={cs.CR},
-      url={https://arxiv.org/abs/2509.19568}, 
+@inproceedings{plin2026knockknock,
+  title     = {Knock-Knock: Black-Box, Platform-Agnostic DRAM Address-Mapping Reverse Engineering},
+  author    = {Antoine Plin and Lorenzo Casalino and Thomas Rokicki and Ruben Salvador},
+  booktitle = {2026: Proceedings of the Microarchitecture Security Conference (uASC '26)},
+  series    = {Proceedings of the Microarchitecture Security Conference},
+  publisher = {Ruhr University Bochum},
+  address   = {Leuven, Belgium},
+  year      = {2026},
+  month     = feb,
+  day       = {3},
 }
 ```
