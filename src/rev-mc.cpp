@@ -69,7 +69,7 @@ uint64_t measure_one_block_access_time(volatile void* p1, volatile void* p2)
         "add %0, %1, #0\n\t"
         "eor %0, %0, %2\n\t"
         "eor %0, %0, %2\n\t"
-        : "=r"(safe_ptr)
+        : "=&r"(safe_ptr)
         : "r"(p2), "r"(val)
         : "memory");
     volatile void *safe_p2 = (void *)safe_ptr;
