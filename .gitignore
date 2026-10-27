@@ -13,6 +13,9 @@ analysis_points.dat
 latencies.dat
 smoothed_histogram.dat
 output.csv
+threshold_analysis_summary.txt
+data/
 
 # Python cache
 __pycache__/
+*.d

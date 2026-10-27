@@ -2,7 +2,7 @@
 
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++11 -O2 -g -Isrc/include -Ienable_arm_pmu
+CXXFLAGS = -std=c++11 -O2 -g -Wall -Wextra -MMD -MP -Isrc/include -Ienable_arm_pmu
 LDFLAGS = -lrt -lpthread
 
 # Source files
@@ -10,8 +10,7 @@ SRCS = src/main.cpp src/utils.cpp src/rev-mc.cpp src/full_analysis.cpp src/linal
 OBJS = $(SRCS:.cpp=.o)
 
 # Tests
-TEST_SRCS = tests/threshold/test_threshold.cpp
-TEST_TARGETS = tests/bin/test_threshold
+TEST_TARGETS = tests/bin/test_threshold tests/bin/test_linalg
 
 # Target executable
 TARGET = main
@@ -41,9 +40,13 @@ test: $(TEST_TARGETS)
 $(TARGET): $(OBJS)
 	$(CXX) $(OBJS) -o $(TARGET) $(LDFLAGS)
 
-$(TEST_TARGETS): $(TEST_SRCS) src/threshold.cpp src/include/threshold.h
+tests/bin/test_threshold: tests/threshold/test_threshold.cpp src/threshold.cpp src/include/threshold.h
 	mkdir -p tests/bin
-	$(CXX) $(CXXFLAGS) $(TEST_SRCS) src/threshold.cpp -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) tests/threshold/test_threshold.cpp src/threshold.cpp -o $@ $(LDFLAGS)
+
+tests/bin/test_linalg: tests/linalg/test_linalg.cpp src/linalg.cpp src/include/linalg.h
+	mkdir -p tests/bin
+	$(CXX) $(CXXFLAGS) tests/linalg/test_linalg.cpp src/linalg.cpp -o $@ $(LDFLAGS)
 
 # Rule to compile source files into object files
 %.o: %.cpp
@@ -51,6 +54,8 @@ $(TEST_TARGETS): $(TEST_SRCS) src/threshold.cpp src/include/threshold.h
 
 # Clean rule
 clean:
-	rm -f $(OBJS) $(TARGET) $(TEST_TARGETS)
+	rm -f $(OBJS) $(OBJS:.o=.d) $(TARGET) $(TEST_TARGETS)
 
 .PHONY: all clean test
+
+-include $(OBJS:.o=.d)

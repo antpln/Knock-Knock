@@ -222,7 +222,6 @@ int main(int argc, char** argv) {
     size_t      mem_size_mb = MEM_SIZE_MB_std;   // Memory size in megabytes
     bool        run_timing = false;              // Whether to run timing measurements
     bool        run_bitflip = false;             // Whether to run bitflip analysis
-    bool        run_full_analysis = false;       // Whether to run the full analysis
     size_t      measurements = MEASUREMENTS_std;  // Number of measurements to perform
     double      mem_percent = 0.0;               // Memory size as percentage of total
     bool        use_percentage = false;          // Flag to use percentage instead of fixed size
@@ -295,8 +294,7 @@ int main(int argc, char** argv) {
             case '2': // Handle --bitflip
                 run_bitflip = true;
                 break;
-            case '3': // Handle --full-analysis
-                run_full_analysis = true;
+            case '3': // Handle --full-analysis (the default mode)
                 break;
             case 'o': // Output file specification
                 o_file = (char*) malloc(sizeof(char) * (strlen(optarg) + 1));

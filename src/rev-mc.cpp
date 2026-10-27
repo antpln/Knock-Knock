@@ -128,11 +128,11 @@ uint64_t measure_one_block_access_time(volatile void* p1, volatile void* p2)
     asm volatile("mfence"); // Ensure all cache flushes are complete
     asm volatile("lfence");
     
-    volatile char val = *(volatile char *)p1;
+    (void)*(volatile char *)p1;
     asm volatile("mfence"); // Ensure the load is complete before timing
     asm volatile("lfence");
     t0 = rdtsc(); // Time start
-    val = *(volatile char *)p2;
+    (void)*(volatile char *)p2;
     asm volatile("mfence"); // Ensure the load is complete before timing
     asm volatile("lfence");
     t1 = rdtscp(); // Time end with serialization

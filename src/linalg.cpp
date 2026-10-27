@@ -1,6 +1,7 @@
 #include "linalg.h"
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 
 // Convert bool vector to uint64_t row representation
 static inline uint64_t bool_vec_to_uint64(const std::vector<bool>& vec) {
@@ -33,6 +34,9 @@ static inline bool get_bit(uint64_t row, size_t pos) {
 
 GF2Matrix::GF2Matrix(size_t rows, size_t cols, const std::vector<std::vector<bool>>& data)
     : rows_(rows), cols_(cols), matrix_rows_(rows) {
+    if (cols > 64) {
+        throw std::invalid_argument("GF2Matrix supports at most 64 columns");
+    }
     // Convert bool vectors to uint64_t representation
     for (size_t i = 0; i < rows; ++i) {
         matrix_rows_[i] = bool_vec_to_uint64(data[i]);
