@@ -55,7 +55,8 @@ void print_usage() {
     fprintf(stderr, "Usage: ./main [OPTIONS]\n\n");
     fprintf(stderr, "Basic Options:\n");
     fprintf(stderr, "  -h, --help                     Show this help message\n");
-    fprintf(stderr, "  -v                             Verbose output\n");
+    fprintf(stderr, "  -v, --verbose                  Verbose output\n");
+    fprintf(stderr, "  -c, --cpu <id>                 Pin to this CPU core (default: 3, else first allowed)\n");
     fprintf(stderr, "  --full-analysis                Run full automated analysis (default mode)\n\n");
     
     fprintf(stderr, "Memory Configuration:\n");
@@ -99,6 +100,41 @@ void print_usage() {
     fprintf(stderr, "  sudo ./main --full-analysis --threshold 180 --bank-conflicts 10000 --bank-rounds 60\n\n");
     fprintf(stderr, "  # High-precision row detection:\n");
     fprintf(stderr, "  sudo ./main --full-analysis --row-pairs 15000 --row-min-hits 2000\n\n");
+}
+
+/**
+ * @brief Parses a strictly positive integer option value
+ *
+ * Rejects empty input, trailing garbage, negative numbers and zero, printing an
+ * error naming the option on failure.
+ */
+template <typename T>
+static bool parse_positive(const char *arg, const char *what, T *out)
+{
+    char *end = NULL;
+    errno = 0;
+    if (arg[0] != '-') {
+        unsigned long long v = strtoull(arg, &end, 10);
+        if (errno == 0 && end != arg && *end == '\0' && v > 0 && (unsigned long long)(T)v == v) {
+            *out = (T)v;
+            return true;
+        }
+    }
+    fprintf(stderr, "[ERROR] - Invalid %s: %s\n", what, arg);
+    return false;
+}
+
+/**
+ * @brief Like parse_positive(), but also accepts 0
+ */
+template <typename T>
+static bool parse_nonneg(const char *arg, const char *what, T *out)
+{
+    if (strcmp(arg, "0") == 0) {
+        *out = 0;
+        return true;
+    }
+    return parse_positive(arg, what, out);
 }
 
 //-----------------------------------------------
@@ -151,6 +187,25 @@ size_t get_total_memory_mb() {
  * @param core_id The CPU core ID to pin the process to
  * @note Exits the program if unable to set CPU affinity
  */
+int default_core()
+{
+    // Prefer core 3 (historical default) but fall back to the first CPU we may run on
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) {
+        return 3;
+    }
+    if (CPU_ISSET(3, &allowed)) {
+        return 3;
+    }
+    for (int i = 0; i < CPU_SETSIZE; ++i) {
+        if (CPU_ISSET(i, &allowed)) {
+            return i;
+        }
+    }
+    return 0;
+}
+
 void pin_to_core(int core_id)
 {
     cpu_set_t cpuset;
@@ -226,6 +281,7 @@ int main(int argc, char** argv) {
     double      mem_percent = 0.0;               // Memory size as percentage of total
     bool        use_percentage = false;          // Flag to use percentage instead of fixed size
     bool        auto_name = false;               // Flag to auto-generate filename based on hostname and size
+    int         core_id   = -1;                 // CPU to pin to (-1: auto)
     unsigned int delay_us = 0;                   // Delay in us after pair measurement for tFAW
 
     // Analysis configuration with defaults
@@ -235,16 +291,12 @@ int main(int argc, char** argv) {
     flags |= F_POPULATE;
     flags |= F_VERBOSE;
 
-    // Pin to core 3 for consistent timing measurements
-    pin_to_core(3);
-
     // Ensure running as root to access /proc/self/pagemap
     if(geteuid() != 0) {
     	fprintf(stderr, "[ERROR] - You need to run as root to access pagemap!\n");
 	exit(1);
     }
 
-    pin_to_core(3); // Pin to core 3 (redundant but ensures consistency)
 
     // Prevent the kernel from swapping out our memory to ensure consistent timing
     if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
@@ -263,6 +315,7 @@ int main(int argc, char** argv) {
               {"delay", required_argument, 0, 'd'},
               {"help", no_argument, 0, 'h'},
               {"verbose", no_argument, 0, 'v'},
+              {"cpu", required_argument, 0, 'c'},
               // Threshold options
               {"threshold", required_argument, 0, 1000},
               {"threshold-samples", required_argument, 0, 1001},
@@ -281,7 +334,7 @@ int main(int argc, char** argv) {
               {"force-multiple-rounds", no_argument, 0, 1030},
               {0, 0, 0, 0}
             };
-        int arg = getopt_long(argc, argv, "o:hvm:r:n:p:ad:",
+        int arg = getopt_long(argc, argv, "o:hvm:r:n:p:ad:c:",
                               long_options, &option_index);
 
         if (arg == -1)
@@ -297,9 +350,11 @@ int main(int argc, char** argv) {
             case '3': // Handle --full-analysis (the default mode)
                 break;
             case 'o': // Output file specification
-                o_file = (char*) malloc(sizeof(char) * (strlen(optarg) + 1));
-                strncpy(o_file, optarg, strlen(optarg));
-                o_file[strlen(optarg)] = '\0';
+                o_file = strdup(optarg);
+                if (o_file == NULL) {
+                    perror("strdup");
+                    return 1;
+                }
                 flags |= F_EXPORT;
                 break;
             case 'a': // Auto-generate filename
@@ -307,25 +362,13 @@ int main(int argc, char** argv) {
                 flags |= F_EXPORT;
                 break;
             case 'm': // Memory size in MB
-                mem_size_mb = (size_t) atol(optarg);
-                if (mem_size_mb <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid memory size: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "memory size", &mem_size_mb)) return 1;
                 break;
             case 'r': // Number of timing rounds
-                rounds = (size_t) atol(optarg);
-                if (rounds <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid number of rounds: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "number of rounds", &rounds)) return 1;
                 break;
             case 'n': // Number of measurements
-                measurements = (size_t) atol(optarg);
-                if (measurements <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid number of measurements: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "number of measurements", &measurements)) return 1;
                 break;
             case 'p': // Memory size as percentage
                 mem_percent = atof(optarg);
@@ -336,90 +379,46 @@ int main(int argc, char** argv) {
                 use_percentage = true;
                 break;
             case 'd': // Delay in us
-                delay_us = (unsigned int) atoi(optarg);
+                if (!parse_nonneg(optarg, "delay", &delay_us)) return 1;
                 break;
             
             // Threshold detection options
             case 1000: // --threshold
-                analysis_config.manual_threshold = (uint64_t) atol(optarg);
-                if (analysis_config.manual_threshold <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid threshold: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "threshold", &analysis_config.manual_threshold)) return 1;
                 break;
             case 1001: // --threshold-samples
-                analysis_config.threshold_samples = (size_t) atol(optarg);
-                if (analysis_config.threshold_samples <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid threshold samples: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "threshold samples", &analysis_config.threshold_samples)) return 1;
                 break;
             
             // Bank mask options
             case 1010: // --bank-conflicts
-                analysis_config.bank_target_conflicts = (size_t) atol(optarg);
-                if (analysis_config.bank_target_conflicts <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid bank conflicts: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "bank conflicts", &analysis_config.bank_target_conflicts)) return 1;
                 break;
             case 1011: // --bank-measurements
-                analysis_config.bank_max_measurements = (size_t) atol(optarg);
-                if (analysis_config.bank_max_measurements <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid bank measurements: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "bank measurements", &analysis_config.bank_max_measurements)) return 1;
                 break;
             case 1012: // --bank-subsample
-                analysis_config.bank_subsample_size = (size_t) atol(optarg);
-                if (analysis_config.bank_subsample_size <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid bank subsample size: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "bank subsample size", &analysis_config.bank_subsample_size)) return 1;
                 break;
             case 1013: // --bank-rounds
-                analysis_config.bank_repeat_rounds = (size_t) atol(optarg);
-                if (analysis_config.bank_repeat_rounds <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid bank rounds: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "bank rounds", &analysis_config.bank_repeat_rounds)) return 1;
                 break;
             case 1014: // --bank-attempts
-                analysis_config.bank_max_attempts = (size_t) atol(optarg);
-                if (analysis_config.bank_max_attempts <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid bank attempts: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "bank attempts", &analysis_config.bank_max_attempts)) return 1;
                 break;
             
             // Row mask options
             case 1020: // --row-pairs
-                analysis_config.row_target_pairs = (size_t) atol(optarg);
-                if (analysis_config.row_target_pairs <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid row pairs: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "row pairs", &analysis_config.row_target_pairs)) return 1;
                 break;
             case 1021: // --row-min-hits
-                analysis_config.row_min_hits = (size_t) atol(optarg);
-                if (analysis_config.row_min_hits <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid row min hits: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "row min hits", &analysis_config.row_min_hits)) return 1;
                 break;
             case 1022: // --row-min-conflicts
-                analysis_config.row_min_conflicts = (size_t) atol(optarg);
-                if (analysis_config.row_min_conflicts <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid row min conflicts: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "row min conflicts", &analysis_config.row_min_conflicts)) return 1;
                 break;
             case 1023: // --row-max-attempts
-                analysis_config.row_max_attempts = (size_t) atol(optarg);
-                if (analysis_config.row_max_attempts <= 0) {
-                    fprintf(stderr, "[ERROR] - Invalid row max attempts: %s\n", optarg);
-                    return 1;
-                }
+                if (!parse_positive(optarg, "row max attempts", &analysis_config.row_max_attempts)) return 1;
                 break;
             
             // Advanced options
@@ -427,6 +426,9 @@ int main(int argc, char** argv) {
                 analysis_config.force_multiple_rounds = true;
                 break;
             
+            case 'c': // CPU core to pin to
+                if (!parse_nonneg(optarg, "CPU core", &core_id)) return 1;
+                break;
             case 'v':
                 flags |= F_VERBOSE;
                 break;
@@ -437,6 +439,8 @@ int main(int argc, char** argv) {
         }
     }
     
+    pin_to_core(core_id >= 0 ? core_id : default_core());
+
     // Check for conflicting options
     if (auto_name && flags & F_EXPORT && o_file != (char*) O_FILE_std) {
         fprintf(stderr, "[ERROR] - Cannot specify both -o and -a options simultaneously\n");
