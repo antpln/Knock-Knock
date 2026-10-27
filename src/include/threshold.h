@@ -6,6 +6,11 @@
 #include <string>
 #include <vector>
 
+enum class ThresholdMethod {
+    Legacy,  // first steep rise walking left from the conflict peak (original heuristic)
+    Foot     // left foot of the conflict bump, validity judged on the true valley
+};
+
 struct ThresholdDetectionResult {
     uint64_t threshold;
     uint64_t min_latency;
@@ -25,6 +30,7 @@ struct ThresholdDetectionResult {
 ThresholdDetectionResult detect_latency_threshold(
     const std::vector<uint64_t>& latencies,
     int smoothing_window = 7,
-    double fallback_quantile = 0.95);
+    double fallback_quantile = 0.95,
+    ThresholdMethod method = ThresholdMethod::Legacy);
 
 #endif // THRESHOLD_H

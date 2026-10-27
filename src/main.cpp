@@ -67,7 +67,8 @@ void print_usage() {
     
     fprintf(stderr, "Threshold Detection Options:\n");
     fprintf(stderr, "  --threshold <cycles>           Manually set conflict threshold (skip auto-detection)\n");
-    fprintf(stderr, "  --threshold-samples <n>        Number of samples for threshold detection (default: 100000)\n\n");
+    fprintf(stderr, "  --threshold-samples <n>        Number of samples for threshold detection (default: 100000)\n");
+    fprintf(stderr, "  --threshold-method <m>         Auto-detection heuristic: legacy (default) or foot\n\n");
     
     fprintf(stderr, "Bank Mask Detection Options:\n");
     fprintf(stderr, "  --bank-conflicts <n>           Target number of conflict samples (default: 5000)\n");
@@ -319,6 +320,7 @@ int main(int argc, char** argv) {
               // Threshold options
               {"threshold", required_argument, 0, 1000},
               {"threshold-samples", required_argument, 0, 1001},
+              {"threshold-method", required_argument, 0, 1002},
               // Bank mask options
               {"bank-conflicts", required_argument, 0, 1010},
               {"bank-measurements", required_argument, 0, 1011},
@@ -390,6 +392,17 @@ int main(int argc, char** argv) {
                 if (!parse_positive(optarg, "threshold samples", &analysis_config.threshold_samples)) return 1;
                 break;
             
+            case 1002: // --threshold-method
+                if (strcmp(optarg, "legacy") == 0) {
+                    analysis_config.threshold_method = ThresholdMethod::Legacy;
+                } else if (strcmp(optarg, "foot") == 0) {
+                    analysis_config.threshold_method = ThresholdMethod::Foot;
+                } else {
+                    fprintf(stderr, "[ERROR] - Invalid threshold method: %s (use legacy or foot)\n", optarg);
+                    return 1;
+                }
+                break;
+
             // Bank mask options
             case 1010: // --bank-conflicts
                 if (!parse_positive(optarg, "bank conflicts", &analysis_config.bank_target_conflicts)) return 1;

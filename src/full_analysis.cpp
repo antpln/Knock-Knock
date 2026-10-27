@@ -821,7 +821,7 @@ void FullAnalysis::detect_threshold() {
         printf("[ LOG ] - Saved raw latency samples to latencies.dat\n");
     }
 
-    auto detection = detect_latency_threshold(latencies);
+    auto detection = detect_latency_threshold(latencies, 7, 0.95, config_.threshold_method);
 
     // Save raw histogram (unsmoothed)
     if (!detection.histogram.empty()) {

@@ -94,6 +94,9 @@ This runs the complete analysis using 50% of system memory.
   - Example: `--threshold 260`
 - `--threshold-samples <n>`: Samples for histogram (default: 100000)
   - Example: `--threshold-samples 200000`
+- `--threshold-method <legacy|foot>`: Auto-detection heuristic (default: `legacy`)
+  - `foot` places the threshold at the left foot of the conflict bump and scores validity on the valley between the modes; on synthetic data it separates the modes more reliably than `legacy`, which tends to land next to the conflict peak
+  - Example: `--threshold-method foot`
 
 #### Stage 2: Bank Mask Detection Options
 - `--bank-conflicts <n>`: Target conflict samples (default: 5000)

@@ -1,6 +1,7 @@
 #ifndef FULL_ANALYSIS_H
 #define FULL_ANALYSIS_H
 
+#include "threshold.h"
 #include <cstdint>
 #include <vector>
 #include <cstddef>
@@ -9,6 +10,7 @@ struct AnalysisConfig {
     // Threshold detection parameters
     size_t threshold_samples = 100000;
     uint64_t manual_threshold = 0;  // If non-zero, skip auto-detection
+    ThresholdMethod threshold_method = ThresholdMethod::Legacy;  // Auto-detection heuristic
     
     // Bank mask detection parameters
     size_t bank_target_conflicts = 5000;

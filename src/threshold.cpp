@@ -6,9 +6,13 @@
 #include <numeric>
 #include <string>
 
+// Fraction of the (peak - valley) height at which the Foot method places the threshold
+static const double kFootLevel = 0.1;
+
 ThresholdDetectionResult detect_latency_threshold(const std::vector<uint64_t>& latencies,
                                                   int smoothing_window,
-                                                  double fallback_quantile) {
+                                                  double fallback_quantile,
+                                                  ThresholdMethod method) {
     ThresholdDetectionResult result{};
 
     result.threshold_valid = false;
@@ -145,9 +149,8 @@ ThresholdDetectionResult detect_latency_threshold(const std::vector<uint64_t>& l
     // the slope changes from increasing (moving left) to decreasing or flat.
     // This is the "left foot" where the high-latency bump begins.
     
-    bool found_left_foot = false;
     size_t threshold_idx = result.main_peak_idx + 1;
-    
+
     // First, find the minimum (valley) between main peak and high peak
     size_t valley_idx = result.main_peak_idx + 1;
     double valley_val = result.smoothed_histogram[valley_idx];
@@ -159,68 +162,82 @@ ThresholdDetectionResult detect_latency_threshold(const std::vector<uint64_t>& l
         }
     }
     
-    // Calculate a threshold for "significant rise" based on peak height
-    const double peak_height = result.smoothed_histogram[high_peak_idx];
-    const double valley_to_peak = peak_height - valley_val;
-    
-    // We want to find where the curve starts its significant ascent
-    // Define "significant" as rising more than 5% of the valley-to-peak range
-    const double rise_threshold = valley_to_peak * 0.05;
-    
-    // Walk from high_peak towards valley
-    // Find the point where the derivative (rise rate) first exceeds our threshold
-    // This is the "left foot" - where the bump starts rising
-    for (size_t i = high_peak_idx; i > valley_idx + 1; --i) {
-        double curr = result.smoothed_histogram[i];
-        double prev = result.smoothed_histogram[i - 1];
-        double rise = curr - prev; // positive when curve goes up as we move right
-        
-        // If we're still rising significantly as we move right, we're past the foot
-        if (rise > rise_threshold) {
-            // The left foot is where the rise starts to become significant
-            threshold_idx = i - 1;
-            found_left_foot = true;
-            break;
+    if (method == ThresholdMethod::Foot) {
+        // Walk left from the conflict peak until the bump has decayed to a small
+        // fraction of its height above the valley: that bin is the bump's left foot.
+        const double foot_level = valley_val + kFootLevel * (result.smoothed_histogram[high_peak_idx] - valley_val);
+        threshold_idx = high_peak_idx;
+        while (threshold_idx > valley_idx && result.smoothed_histogram[threshold_idx] > foot_level) {
+            --threshold_idx;
         }
-    }
+    } else {
+        bool found_left_foot = false;
     
-    // Alternative method: find inflection point (where second derivative changes)
-    if (!found_left_foot) {
-        // Look for where the curve transitions from concave down to concave up
-        // (second derivative changes from negative to positive)
-        for (size_t i = valley_idx + 2; i < high_peak_idx - 1; ++i) {
-            double prev_rise = result.smoothed_histogram[i] - result.smoothed_histogram[i - 1];
-            double next_rise = result.smoothed_histogram[i + 1] - result.smoothed_histogram[i];
-            double second_deriv = next_rise - prev_rise;
-            
-            // If second derivative becomes positive and we're rising significantly
-            if (second_deriv > 0 && next_rise > rise_threshold) {
-                threshold_idx = i;
+        // Calculate a threshold for "significant rise" based on peak height
+        const double peak_height = result.smoothed_histogram[high_peak_idx];
+        const double valley_to_peak = peak_height - valley_val;
+    
+        // We want to find where the curve starts its significant ascent
+        // Define "significant" as rising more than 5% of the valley-to-peak range
+        const double rise_threshold = valley_to_peak * 0.05;
+    
+        // Walk from high_peak towards valley
+        // Find the point where the derivative (rise rate) first exceeds our threshold
+        // This is the "left foot" - where the bump starts rising
+        for (size_t i = high_peak_idx; i > valley_idx + 1; --i) {
+            double curr = result.smoothed_histogram[i];
+            double prev = result.smoothed_histogram[i - 1];
+            double rise = curr - prev; // positive when curve goes up as we move right
+        
+            // If we're still rising significantly as we move right, we're past the foot
+            if (rise > rise_threshold) {
+                // The left foot is where the rise starts to become significant
+                threshold_idx = i - 1;
                 found_left_foot = true;
                 break;
             }
         }
-    }
     
-    // Fallback: use a point slightly above the valley
-    // This ensures we're not in the valley itself, but at the beginning of the rise
-    if (!found_left_foot) {
-        // Find where we've risen 15% of the way from valley to high_peak
-        double target_height = valley_val + valley_to_peak * 0.15;
-        
-        for (size_t i = valley_idx; i < high_peak_idx; ++i) {
-            if (result.smoothed_histogram[i] >= target_height) {
-                threshold_idx = i;
-                found_left_foot = true;
-                break;
-            }
-        }
-        
-        // Ultimate fallback: slightly past the valley
+        // Alternative method: find inflection point (where second derivative changes)
         if (!found_left_foot) {
-            threshold_idx = valley_idx + std::max(size_t(1), 
-                                                   (high_peak_idx - valley_idx) / 6);
+            // Look for where the curve transitions from concave down to concave up
+            // (second derivative changes from negative to positive)
+            for (size_t i = valley_idx + 2; i < high_peak_idx - 1; ++i) {
+                double prev_rise = result.smoothed_histogram[i] - result.smoothed_histogram[i - 1];
+                double next_rise = result.smoothed_histogram[i + 1] - result.smoothed_histogram[i];
+                double second_deriv = next_rise - prev_rise;
+            
+                // If second derivative becomes positive and we're rising significantly
+                if (second_deriv > 0 && next_rise > rise_threshold) {
+                    threshold_idx = i;
+                    found_left_foot = true;
+                    break;
+                }
+            }
         }
+    
+        // Fallback: use a point slightly above the valley
+        // This ensures we're not in the valley itself, but at the beginning of the rise
+        if (!found_left_foot) {
+            // Find where we've risen 15% of the way from valley to high_peak
+            double target_height = valley_val + valley_to_peak * 0.15;
+        
+            for (size_t i = valley_idx; i < high_peak_idx; ++i) {
+                if (result.smoothed_histogram[i] >= target_height) {
+                    threshold_idx = i;
+                    found_left_foot = true;
+                    break;
+                }
+            }
+        
+            // Ultimate fallback: slightly past the valley
+            if (!found_left_foot) {
+                threshold_idx = valley_idx + std::max(size_t(1), 
+                                                       (high_peak_idx - valley_idx) / 6);
+            }
+        }
+
+
     }
 
     if (threshold_idx >= high_peak_idx) {
@@ -237,7 +254,10 @@ ThresholdDetectionResult detect_latency_threshold(const std::vector<uint64_t>& l
     // Evaluate quality of the valley between peaks
     const double main_peak_height = result.smoothed_histogram[result.main_peak_idx];
     const double high_peak_height = result.smoothed_histogram[result.high_latency_peak_idx];
-    const double valley_height = result.smoothed_histogram[threshold_idx];
+    // The legacy method judged the bin at the threshold; Foot judges the true valley between the peaks
+    const double valley_height = (method == ThresholdMethod::Foot)
+        ? valley_val
+        : result.smoothed_histogram[threshold_idx];
     const double limiting_peak = std::min(main_peak_height, high_peak_height);
     const size_t peak_distance = (result.high_latency_peak_idx > result.main_peak_idx)
         ? (result.high_latency_peak_idx - result.main_peak_idx)
