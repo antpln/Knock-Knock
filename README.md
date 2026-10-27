@@ -24,8 +24,12 @@ Knock-Knock provides two workflows for DRAM reverse engineering:
 
 ### 1. Build
 ```bash
+git clone --recursive https://github.com/antpln/Knock-Knock.git   # --recursive fetches enable_arm_pmu
+cd Knock-Knock
 make
+make test    # optional: unit tests
 ```
+If you already cloned without `--recursive`, run `git submodule update --init`.
 This produces `main` (automatic pipeline) and supporting components.
 
 ### 2. ARM64 PMU Setup (ARM platforms only)
@@ -105,8 +109,7 @@ This runs the complete analysis using 50% of system memory.
 - `--row-max-attempts <n>`: Max sampling attempts (default: 2400000)
 
 #### Other Options
-- `-v`: Verbose output
-- `-d, --delay <us>`: Delay between measurements (µs) for tFAW mitigation (default: 0)
+- `-v, --verbose`: Verbose output
 - `--force-multiple-rounds`: Force multiple rounds for validation
 
 ### Examples
