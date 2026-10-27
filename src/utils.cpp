@@ -18,6 +18,7 @@
 #include <string.h>
 #include <linux/mman.h>
 #include <time.h>
+#include <random>
 
 #include "utils.h"
 
@@ -36,9 +37,10 @@
  */
 static void shuffle_pages(size_t *idx, size_t n)
 {
-    srand((unsigned)time(NULL));
+    if (n < 2) return;
+    static std::mt19937_64 rng{std::random_device{}()};
     for (size_t i = n - 1; i; --i) {
-        size_t j = (size_t)rand() % (i + 1);
+        size_t j = std::uniform_int_distribution<size_t>(0, i)(rng);
         size_t tmp = idx[i]; idx[i] = idx[j]; idx[j] = tmp;
     }
 }

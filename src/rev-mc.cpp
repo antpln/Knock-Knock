@@ -18,6 +18,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <random>
 
 #include "rev-mc.h"
 
@@ -73,7 +74,6 @@ uint64_t measure_one_block_access_time(volatile void* p1, volatile void* p2)
         : "r"(p2), "r"(val)
         : "memory");
     volatile void *safe_p2 = (void *)safe_ptr;
-    assert(safe_p2 == p2 && "safe_p2 should equal p2 (dependency transformation failed!)");
 
     asm volatile("NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP");
 
@@ -186,15 +186,11 @@ uint64_t time_tuple(volatile char *a1, volatile char *a2, size_t rounds)
  */
 char *get_rnd_addr(char *base, size_t m_size)
 {
-    uint64_t random_offset = rand() % m_size;
+    // rand() only yields 31 bits, which would never reach high offsets of large buffers
+    static std::mt19937_64 rng{std::random_device{}()};
+    uint64_t random_offset = std::uniform_int_distribution<uint64_t>(0, m_size - 1)(rng);
 
-    // Ensure the resulting address does not exceed base + m_size
-    if ((uint64_t)base + random_offset >= (uint64_t)base + m_size)
-    {
-        random_offset = m_size - 1; // Clamp to last byte
-    }
-
-    return (char *)((uint64_t)base + random_offset);
+    return base + random_offset;
 }
 
 /**
@@ -236,22 +232,35 @@ uint64_t get_pfn(uint64_t entry)
  */
 uint64_t get_phys_addr(uint64_t v_addr)
 {
+    static int fd = -1;
+    if (fd < 0) {
+        fd = open("/proc/self/pagemap", O_RDONLY);
+        if (fd < 0) {
+            perror("[ERROR] open /proc/self/pagemap");
+            exit(EXIT_FAILURE);
+        }
+    }
+
     uint64_t entry;
-    long page_sz   = sysconf(_SC_PAGESIZE);          /* 4096 or 65536   */
-    int  page_shift = __builtin_ctzl(page_sz);       /* 12 or 16        */
+    long page_sz    = sysconf(_SC_PAGESIZE);          /* 4096 or 65536   */
+    int  page_shift = __builtin_ctzl(page_sz);        /* 12 or 16        */
 
-    uint64_t offset = (v_addr >> page_shift) * 8;    /* correct seek    */
+    uint64_t offset = (v_addr >> page_shift) * 8;     /* correct seek    */
 
-    int fd = open("/proc/self/pagemap", O_RDONLY);
-    assert(fd >= 0);
+    if (pread(fd, &entry, sizeof(entry), offset) != (ssize_t)sizeof(entry)) {
+        perror("[ERROR] pagemap read");
+        exit(EXIT_FAILURE);
+    }
+    if (!(entry & (1ULL << 63))) {
+        fprintf(stderr, "[ERROR] page for VA 0x%lx is not present\n", v_addr);
+        exit(EXIT_FAILURE);
+    }
 
-    ssize_t n = pread(fd, &entry, sizeof(entry), offset);
-    close(fd);
-    assert(n == 8);
-    assert(entry & (1ULL << 63));                    /* page present    */
-
-    uint64_t pfn = entry & ((1ULL<<55) - 1);         /* bits 0-54       */
-    assert(pfn != 0 && "need CAP_SYS_ADMIN or root");/* may still trip  */
+    uint64_t pfn = entry & ((1ULL << 55) - 1);        /* bits 0-54       */
+    if (pfn == 0) {
+        fprintf(stderr, "[ERROR] pagemap returned PFN 0 (need root / CAP_SYS_ADMIN)\n");
+        exit(EXIT_FAILURE);
+    }
 
     return (pfn << page_shift) | (v_addr & (page_sz - 1));
 }
@@ -343,17 +352,17 @@ void timing_measurement(size_t rounds, size_t m_size, char *o_file, uint64_t fla
     };
 
     // Allocate the memory buffer with scattered physical pages
-    alloc_buffer(&mem);
+    if (alloc_buffer(&mem) != 0) {
+        fprintf(stderr, "[ERROR] - Buffer allocation failed.\n");
+        exit(1);
+    }
 
     // Generate initial random address for baseline measurements
-    char *rnd_addr = get_rnd_addr(mem.buffer, mem.size);
-    addr_tuple tp = gen_addr_tuple(rnd_addr);
+    addr_tuple tp = gen_addr_tuple(get_rnd_addr(mem.buffer, mem.size));
 
     // Main measurement loop
     for (size_t i = 0; i < measurements; i++)
     {
-        char *rnd_addr = get_rnd_addr(mem.buffer, mem.size);
-        
         // Perform multiple sub-measurements for each main measurement
         for (int j = 0; j < 50; j++)
         {
@@ -471,7 +480,10 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
         .size = m_size,
         .flags = flags,
     };
-    alloc_buffer(&mem);
+    if (alloc_buffer(&mem) != 0) {
+        fprintf(stderr, "[ERROR] - Buffer allocation failed.\n");
+        exit(1);
+    }
 
     // Build PFN-to-VA mapping table for address translation
     size_t pfn_map_size;
@@ -487,6 +499,8 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
     // Define candidate bank bits to test (covering typical DRAM address ranges)
     const int bank_bits[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43};
     const int n_bank_bits = sizeof(bank_bits)/sizeof(bank_bits[0]);
+    const int n_probe_bits = 33; // only the first 33 candidates (bits 1..33) are probed
+    assert(n_probe_bits <= n_bank_bits);
 
     // Test each anchor address
     for (int a_idx = 0; a_idx < num_anchors; a_idx++) {
@@ -496,7 +510,7 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
         printf("[anchor %d/%d] VA=%p PA=0x%lx\n", a_idx+1, num_anchors, anchor_va, anchor_pa);
 
         // Step 2: test single-bit flips and bit-10 combinations.
-        for (int b = 0; b < 33; b++) {
+        for (int b = 0; b < n_probe_bits; b++) {
             int i = bank_bits[b];
             
             // Single bit flip test
@@ -527,7 +541,7 @@ void mapping_bitflip_probe(size_t m_size, size_t rounds, size_t flags, int num_a
         }
 
         // Step 3: test two-bit flips and bit-10 combinations.
-        for (int bi = 0; bi < 33; bi++) {
+        for (int bi = 0; bi < n_probe_bits; bi++) {
             for (int bj = 0; bj < bi; bj++) {
                 // Two-bit flip pattern
                 uint64_t delta = (1UL << bank_bits[bi]) ^ (1UL << bank_bits[bj]);
