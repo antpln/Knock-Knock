@@ -70,7 +70,7 @@ int alloc_buffer(mem_buff_t *mem)
     /* 1. Reserve anonymous virtual space (lazy allocation). */
     mem->buffer = (char*)mmap(NULL, mem->size,
                        PROT_READ | PROT_WRITE,
-                       MAP_PRIVATE | MAP_ANONYMOUS | mem->flags,
+                       MAP_PRIVATE | MAP_ANONYMOUS,
                        -1, 0);
     if (mem->buffer == MAP_FAILED) {
         perror("[ERROR] mmap");

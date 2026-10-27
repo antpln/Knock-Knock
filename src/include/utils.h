@@ -13,23 +13,23 @@
 
 // Bit manipulation and memory size conversion macros
 #define BIT(x) (1ULL<<(x))              // Create bitmask with bit x set
-#define KB(x) ((x)<<10ULL)              // Convert to kilobytes
-#define MB(x) ((x)<<20ULL)              // Convert to megabytes  
-#define GB(x) ((x)<<30ULL)              // Convert to gigabytes
+#define KB(x) (((uint64_t)(x))<<10)              // Convert to kilobytes
+#define MB(x) (((uint64_t)(x))<<20)              // Convert to megabytes  
+#define GB(x) (((uint64_t)(x))<<30)              // Convert to gigabytes
 #define CL_SHIFT 6                      // Cache line shift (64 bytes = 2^6)
 #define CL_SIZE 64                      // Cache line size in bytes
 
 // Control flags for memory allocation and operations
 #define F_CLEAR 	0L                  // Clear all flags
-#define F_VERBOSE 	BIT(1)              // Enable verbose logging
-#define F_EXPORT 	BIT(1)              // Enable data export
+#define F_VERBOSE 	BIT(40)             // Enable verbose logging
+#define F_EXPORT 	BIT(41)             // Enable data export
 
 // Memory allocation flags (using bits 30-34 for memory-related flags)
 #define MEM_SHIFT			(30L)
-#define MEM_MASK			0b11111ULL << MEM_SHIFT				
+#define MEM_MASK			(0b11111ULL << MEM_SHIFT)				
 #define F_ALLOC_HUGE 		BIT(MEM_SHIFT)          // Use huge pages
-#define F_ALLOC_HUGE_1G 	F_ALLOC_HUGE | BIT(MEM_SHIFT+1)  // Use 1GB huge pages
-#define F_ALLOC_HUGE_2M		F_ALLOC_HUGE | BIT(MEM_SHIFT+2)  // Use 2MB huge pages
+#define F_ALLOC_HUGE_1G 	(F_ALLOC_HUGE | BIT(MEM_SHIFT+1))  // Use 1GB huge pages
+#define F_ALLOC_HUGE_2M		(F_ALLOC_HUGE | BIT(MEM_SHIFT+2))  // Use 2MB huge pages
 #define F_POPULATE			BIT(MEM_SHIFT+3)        // Populate pages immediately
 
 

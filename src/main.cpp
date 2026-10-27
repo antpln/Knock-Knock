@@ -7,7 +7,9 @@
  * to understand how physical addresses map to DRAM banks and rows.
  */
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "stdio.h"
 #include <stdint.h>
 #include <assert.h>
@@ -22,6 +24,7 @@
 #include <stdbool.h>
 #include <getopt.h>
 #include <sys/mman.h>
+#include <errno.h>
 
 #include "utils.h"
 #include "rev-mc.h"
@@ -32,6 +35,7 @@
 #define O_FILE_std      "output.csv"     // Default output file for results
 #define MEM_SIZE_MB_std 25600            // Default memory size: 25GB in MB
 #define MEASUREMENTS_std 100000          // Default number of measurements to perform
+#define BITFLIP_ANCHORS  10              // Anchor addresses used by --bitflip
 
 
 //-----------------------------------------------
@@ -216,6 +220,7 @@ int main(int argc, char** argv) {
     size_t      rounds      = ROUNDS_std;        // Number of timing measurement rounds
     char*       o_file      = (char*) O_FILE_std; // Output file path
     size_t      mem_size_mb = MEM_SIZE_MB_std;   // Memory size in megabytes
+    bool        run_timing = false;              // Whether to run timing measurements
     bool        run_bitflip = false;             // Whether to run bitflip analysis
     bool        run_full_analysis = false;       // Whether to run the full analysis
     size_t      measurements = MEASUREMENTS_std;  // Number of measurements to perform
@@ -250,7 +255,6 @@ int main(int argc, char** argv) {
 
     // Parse command-line arguments
     while (1) {
-        int this_option_optind = optind ? optind : 1;
         int option_index = 0;
         static struct option long_options[] =
             {
@@ -259,6 +263,7 @@ int main(int argc, char** argv) {
               {"full-analysis", no_argument, 0, '3'}, // Enable full analysis mode
               {"delay", required_argument, 0, 'd'},
               {"help", no_argument, 0, 'h'},
+              {"verbose", no_argument, 0, 'v'},
               // Threshold options
               {"threshold", required_argument, 0, 1000},
               {"threshold-samples", required_argument, 0, 1001},
@@ -285,7 +290,7 @@ int main(int argc, char** argv) {
 
         switch(arg) {
             case '1': // Handle --timing
-                // Timing mode is default, no additional action needed
+                run_timing = true;
                 break;
             case '2': // Handle --bitflip
                 run_bitflip = true;
@@ -424,6 +429,9 @@ int main(int argc, char** argv) {
                 analysis_config.force_multiple_rounds = true;
                 break;
             
+            case 'v':
+                flags |= F_VERBOSE;
+                break;
             case 'h':
             default:
                 print_usage();
@@ -458,21 +466,26 @@ int main(int argc, char** argv) {
         printf("[ LOG ] - Auto-generated output filename: %s\n", o_file);
     }
     
-    // Execute the selected analysis mode
-    if (run_full_analysis) {
-        FullAnalysis analysis(m_size, delay_us, analysis_config);
-        analysis.run();
+    // Execute the selected mode (full analysis is the default)
+    if (run_timing || run_bitflip) {
+        // The legacy modes write into data/
+        if (mkdir("data", 0755) != 0 && errno != EEXIST) {
+            perror("mkdir data");
+            return 1;
+        }
+        if (run_timing) {
+            timing_measurement(rounds, m_size, o_file, flags, measurements);
+        }
+        if (run_bitflip) {
+            mapping_bitflip_probe(m_size, rounds, flags, BITFLIP_ANCHORS);
+        }
     } else {
-        // Default to full analysis
         FullAnalysis analysis(m_size, delay_us, analysis_config);
         analysis.run();
     }
-    
+
     // Clean up allocated memory
-    if (auto_name && o_file != (char*) O_FILE_std) {
-        free(o_file);
-    }
-    else if (o_file != (char*) O_FILE_std) {
+    if (o_file != (char*) O_FILE_std) {
         free(o_file);
     }
 
